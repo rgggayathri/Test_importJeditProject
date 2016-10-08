@@ -1,6 +1,6 @@
 /*
  * Macros.java - Macro manager
- * Copyright (C) 1999, 2000 Slava Pestov
+ * Copyright (C) 1999, 2000, 2001 Slava Pestov
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -39,7 +39,7 @@ import org.gjt.sp.util.Log;
  * This class records and runs macros.
  *
  * @author Slava Pestov
- * @version $Id: Macros.java,v 1.52 2000/12/24 02:54:47 sp Exp $
+ * @version $Id: Macros.java,v 1.1.1.1 2001/09/02 05:37:19 spestov Exp $
  */
 public class Macros
 {
@@ -77,9 +77,20 @@ public class Macros
 	 */
 	public static String input(View view, String prompt)
 	{
+		return input(view,prompt,null);
+	}
+
+	/**
+	 * Utility method that can be used to prompt for input in a macro.
+	 * @param view The view
+	 * @param prompt The prompt string
+	 * @since jEdit 3.1final
+	 */
+	public static String input(View view, String prompt, String defaultValue)
+	{
 		return (String)JOptionPane.showInputDialog(view,prompt,
 			jEdit.getProperty("macro-input.title"),
-			JOptionPane.QUESTION_MESSAGE,null,null,null);
+			JOptionPane.QUESTION_MESSAGE,null,null,defaultValue);
 	}
 
 	/**
@@ -89,15 +100,26 @@ public class Macros
 	 */
 	public static void browseSystemMacros(View view)
 	{
+		if(userMacroPath == null)
+		{
+			GUIUtilities.error(view,"no-webstart",null);
+			return;
+		}
+
 		DockableWindowManager dockableWindowManager
 			= view.getDockableWindowManager();
 
 		dockableWindowManager.addDockableWindow(VFSBrowser.NAME);
-		VFSBrowser browser = (VFSBrowser)dockableWindowManager
+		final VFSBrowser browser = (VFSBrowser)dockableWindowManager
 			.getDockableWindow(VFSBrowser.NAME);
 
-		browser.setDirectory(MiscUtilities.constructPath(
-			jEdit.getJEditHome(),"macros"));
+		VFSManager.runInAWTThread(new Runnable()
+		{
+			public void run()
+			{
+				browser.setDirectory(systemMacroPath);
+			}
+		});
 	}
 
 	/**
@@ -107,9 +129,7 @@ public class Macros
 	 */
 	public static void browseUserMacros(View view)
 	{
-		String settings = jEdit.getSettingsDirectory();
-
-		if(settings == null)
+		if(userMacroPath == null)
 		{
 			GUIUtilities.error(view,"no-settings",null);
 			return;
@@ -119,10 +139,16 @@ public class Macros
 			= view.getDockableWindowManager();
 
 		dockableWindowManager.addDockableWindow(VFSBrowser.NAME);
-		VFSBrowser browser = (VFSBrowser)dockableWindowManager
+		final VFSBrowser browser = (VFSBrowser)dockableWindowManager
 			.getDockableWindow(VFSBrowser.NAME);
 
-		browser.setDirectory(MiscUtilities.constructPath(settings,"macros"));
+		VFSManager.runInAWTThread(new Runnable()
+		{
+			public void run()
+			{
+				browser.setDirectory(userMacroPath);
+			}
+		});
 	}
 
 	/**
@@ -136,9 +162,12 @@ public class Macros
 		macroHierarchy = new Vector();
 		macroHash = new Hashtable();
 
-		systemMacroPath = MiscUtilities.constructPath(
-			jEdit.getJEditHome(),"macros");
-		loadMacros(macroHierarchy,"",new File(systemMacroPath));
+		if(jEdit.getJEditHome() != null)
+		{
+			systemMacroPath = MiscUtilities.constructPath(
+				jEdit.getJEditHome(),"macros");
+			loadMacros(macroHierarchy,"",new File(systemMacroPath));
+		}
 
 		String settings = jEdit.getSettingsDirectory();
 
@@ -169,9 +198,8 @@ public class Macros
 	}
 
 	/**
-	 * Returns a single vector with all known macros in it. Each
-	 * element of this vector is a macro name string.
-	 * @since jEdit 2.6pre1
+	 * Returns a single vector with all known macros in it.
+	 * @since jEdit 3.1pre3
 	 */
 	public static Vector getMacroList()
 	{
@@ -203,24 +231,31 @@ public class Macros
 			this.name = name;
 			this.path = path;
 
-			action = new EditAction("irrelevant")
+			action = new EditAction(name,false)
 			{
 				public void invoke(View view)
 				{
 					lastMacro = path;
-					BeanShell.runScript(view,path,false);
+					Buffer buffer = view.getBuffer();
+
+					try
+					{
+						buffer.beginCompoundEdit();
+
+						BeanShell.runScript(view,path,
+							true,false);
+					}
+					finally
+					{
+						buffer.endCompoundEdit();
+					}
 				}
 			};
-
-			String binding = jEdit.getProperty(name + ".shortcut");
-			if(binding != null)
-				jEdit.getInputHandler().addKeyBinding(binding,action);
 		}
 
-		// for debugging
 		public String toString()
 		{
-			return name + ":" + path;
+			return name;
 		}
 	}
 
@@ -245,7 +280,7 @@ public class Macros
 		}
 
 		Buffer buffer = jEdit.openFile(null,settings + File.separator
-			+ "macros","Temporary_Macro.bsh",false,true);
+			+ "macros","Temporary_Macro.bsh",true,null);
 
 		if(buffer == null)
 			return;
@@ -292,8 +327,7 @@ public class Macros
 
 		Buffer buffer = jEdit.openFile(null,null,
 			MiscUtilities.constructPath(settings,"macros",
-			name + ".bsh"),
-			false,true);
+			name + ".bsh"),true,null);
 
 		if(buffer == null)
 			return;
@@ -351,7 +385,17 @@ public class Macros
 			jEdit.getSettingsDirectory(),"macros",
 			"Temporary_Macro.bsh");
 
-		BeanShell.runScript(view,lastMacro,false);
+		Buffer buffer = view.getBuffer();
+
+		try
+		{
+			buffer.beginCompoundEdit();
+			BeanShell.runScript(view,lastMacro,true,false);
+		}
+		finally
+		{
+			buffer.endCompoundEdit();
+		}
 	}
 
 	/**
@@ -364,7 +408,7 @@ public class Macros
 		if(lastMacro == null)
 			view.getToolkit().beep();
 		else
-			BeanShell.runScript(view,lastMacro,false);
+			BeanShell.runScript(view,lastMacro,true,false);
 	}
 
 	// private members
@@ -399,7 +443,7 @@ public class Macros
 				String name = path + label;
 				Macro newMacro = new Macro(name,file.getPath());
 				vector.addElement(newMacro);
-				macroList.addElement(name);
+				macroList.addElement(newMacro);
 				macroHash.put(name,newMacro);
 			}
 			else if(file.isDirectory())
@@ -423,8 +467,11 @@ public class Macros
 	{
 		lastMacro = buffer.getPath();
 
-		view.setRecordingStatus(true);
 		view.setMacroRecorder(new Recorder(view,buffer,temporary));
+
+		// setting the message to 'null' causes the status bar to check
+		// if a recording is in progress
+		view.getStatus().setMessage(null);
 	}
 
 	static class MacrosEBComponent implements EBComponent
@@ -450,7 +497,8 @@ public class Macros
 			if(File.separatorChar == '\\' || File.separatorChar == ':')
 			{
 				path = path.toLowerCase();
-				if(path.startsWith(systemMacroPath.toLowerCase()))
+				if(systemMacroPath != null && path.startsWith(
+					systemMacroPath.toLowerCase()))
 					loadMacros();
 
 				if(userMacroPath != null && path.startsWith(
@@ -459,7 +507,7 @@ public class Macros
 			}
 			else
 			{
-				if(path.startsWith(systemMacroPath))
+				if(systemMacroPath != null && path.startsWith(systemMacroPath))
 					loadMacros();
 
 				if(userMacroPath != null && path.startsWith(userMacroPath))
@@ -574,8 +622,11 @@ public class Macros
 				buffer.indentLine(i,true,true);
 			}
 
-			view.setRecordingStatus(false);
 			EditBus.removeFromBus(this);
+
+			// setting the message to 'null' causes the status bar to
+			// check if a recording is in progress
+			view.getStatus().setMessage(null);
 		}
 	}
 }

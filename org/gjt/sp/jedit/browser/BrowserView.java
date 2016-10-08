@@ -27,12 +27,12 @@ import java.awt.*;
 import java.util.Enumeration;
 import java.util.Vector;
 import org.gjt.sp.jedit.io.*;
-import org.gjt.sp.jedit.MiscUtilities;
+import org.gjt.sp.jedit.*;
 
 /**
  * VFS browser tree view.
  * @author Slava Pestov
- * @version $Id: BrowserView.java,v 1.13 2000/12/24 02:54:48 sp Exp $
+ * @version $Id: BrowserView.java,v 1.1.1.1 2001/09/02 05:38:19 spestov Exp $
  */
 public class BrowserView extends JPanel
 {
@@ -44,12 +44,10 @@ public class BrowserView extends JPanel
 		model = new DefaultTreeModel(rootNode,true);
 
 		tree = new BrowserJTree(model);
-		tree.setCellRenderer(new FileCellRenderer());
+		tree.setCellRenderer(renderer);
 		tree.setEditable(false);
 		tree.addTreeExpansionListener(new TreeHandler());
 		tree.putClientProperty("JTree.lineStyle", "Angled");
-		tree.setRowHeight(22);
-		tree.setVisibleRowCount(10);
 
 		if(browser.isMultipleSelectionEnabled())
 			tree.getSelectionModel().setSelectionMode(
@@ -59,7 +57,12 @@ public class BrowserView extends JPanel
 				TreeSelectionModel.SINGLE_TREE_SELECTION);
 
 		setLayout(new BorderLayout());
-		add(BorderLayout.CENTER, scroller = new JScrollPane(tree));
+
+		scroller = new JScrollPane(tree);
+		scroller.setPreferredSize(new Dimension(0,200));
+		add(BorderLayout.CENTER,scroller);
+
+		propertiesChanged();
 	}
 
 	public VFS.DirectoryEntry[] getSelectedFiles()
@@ -161,6 +164,12 @@ public class BrowserView extends JPanel
 		return tree;
 	}
 
+	public void propertiesChanged()
+	{
+		showIcons = jEdit.getBooleanProperty("vfs.browser.showIcons");
+		renderer.propertiesChanged();
+	}
+
 	// private members
 	private VFSBrowser browser;
 
@@ -171,7 +180,9 @@ public class BrowserView extends JPanel
 	private DefaultMutableTreeNode currentlyLoadingTreeNode;
 	private BrowserPopupMenu popup;
 
-	private static FileCellRenderer renderer = new FileCellRenderer();
+	// used for tool tips
+	private boolean showIcons;
+	private FileCellRenderer renderer = new FileCellRenderer();
 
 	private StringBuffer typeSelectBuffer = new StringBuffer();
 	private Timer timer = new Timer(0,new ClearTypeSelect());
@@ -281,7 +292,8 @@ public class BrowserView extends JPanel
 				Rectangle cellRect = getPathBounds(path);
 				if(cellRect != null && !cellRectIsVisible(cellRect))
 				{
-					return new Point(cellRect.x + 20, cellRect.y + 2);
+					return new Point(cellRect.x + (showIcons ? 20 : 1),
+						cellRect.y + (showIcons ? 1 : -1));
 				}
 			}
 			return null;
@@ -298,8 +310,8 @@ public class BrowserView extends JPanel
 					evt.consume();
 					break;
 				case KeyEvent.VK_LEFT:
-					if(tree.getMinSelectionRow() == -1
-						|| tree.getMinSelectionRow() == 0)
+					if(getMinSelectionRow() == -1
+						|| getMinSelectionRow() == 0)
 					{
 						String directory = browser.getDirectory();
 						browser.setDirectory(VFSManager.getVFSForPath(
@@ -345,15 +357,15 @@ public class BrowserView extends JPanel
 			case MouseEvent.MOUSE_CLICKED:
 				if((evt.getModifiers() & MouseEvent.BUTTON1_MASK) != 0)
 				{
-					TreePath path = tree.getPathForLocation(evt.getX(),evt.getY());
+					TreePath path = getPathForLocation(evt.getX(),evt.getY());
 					if(path == null)
 					{
 						super.processMouseEvent(evt);
 						break;
 					}
 
-					if(!tree.isPathSelected(path))
-						tree.setSelectionPath(path);
+					if(!isPathSelected(path))
+						setSelectionPath(path);
 
 					if(evt.getClickCount() == 1)
 					{
@@ -369,7 +381,7 @@ public class BrowserView extends JPanel
 						break;
 					}
 				}
-				else if((evt.getModifiers() & MouseEvent.BUTTON3_MASK) != 0)
+				else if(GUIUtilities.isPopupTrigger(evt))
 					; // do nothing
 
 				super.processMouseEvent(evt);
@@ -383,7 +395,7 @@ public class BrowserView extends JPanel
 					if(evt.getClickCount() == 2)
 						break;
 				}
-				else if((evt.getModifiers() & MouseEvent.BUTTON3_MASK) != 0)
+				else if(GUIUtilities.isPopupTrigger(evt))
 				{
 					if(popup != null && popup.isVisible())
 					{
@@ -391,12 +403,12 @@ public class BrowserView extends JPanel
 						break;
 					}
 
-					TreePath path = tree.getPathForLocation(evt.getX(),evt.getY());
+					TreePath path = getPathForLocation(evt.getX(),evt.getY());
 					if(path == null)
 						showFilePopup(null,evt.getPoint());
 					else
 					{
-						tree.setSelectionPath(path);
+						setSelectionPath(path);
 						browser.filesSelected();
 	
 						Object userObject = ((DefaultMutableTreeNode)path
@@ -407,6 +419,8 @@ public class BrowserView extends JPanel
 								userObject;
 							showFilePopup(file,evt.getPoint());
 						}
+						else
+							showFilePopup(null,evt.getPoint());
 					}
 
 					break;

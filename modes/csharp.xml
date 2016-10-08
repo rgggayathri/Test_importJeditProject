@@ -2,21 +2,18 @@
 
 <!DOCTYPE MODE SYSTEM "xmode.dtd">
 
-<MODE NAME="csharp">
+<MODE>
 	<PROPS>
-		<PROPERTY NAME="label" VALUE="C-Sharp" />
 		<PROPERTY NAME="commentStart" VALUE="/*" />
 		<PROPERTY NAME="commentEnd" VALUE="*/" />
-		<PROPERTY NAME="boxComment" VALUE=" *" />
-		<PROPERTY NAME="blockComment" VALUE="//" />
+		<PROPERTY NAME="lineComment" VALUE="//" />
 		<PROPERTY NAME="indentOpenBrackets" VALUE="{" />
 		<PROPERTY NAME="indentCloseBrackets" VALUE="}" />
 		<PROPERTY NAME="indentPrevLine" VALUE="\s*(((if|while)\s*\(|else|case)[^;]*|for\s*\(.*)" />
 		<PROPERTY NAME="doubleBracketIndent" VALUE="false" />
-		<PROPERTY NAME="filenameGlob" VALUE="*.cs" />
 		<PROPERTY NAME="noWordSep" VALUE="_" />
 	</PROPS>
-	<RULES ESCAPE="\" IGNORE_CASE="FALSE" HIGHLIGHT_DIGITS="TRUE">
+	<RULES ESCAPE="\" HIGHLIGHT_DIGITS="TRUE" IGNORE_CASE="FALSE">
 		<!-- whitespace: (space and tab) -->
 		<WHITESPACE> </WHITESPACE>
 		<WHITESPACE>	</WHITESPACE>
@@ -65,10 +62,7 @@
 		<SEQ TYPE="OPERATOR">,</SEQ>
 		<SEQ TYPE="OPERATOR">.</SEQ>
 		<SEQ TYPE="OPERATOR">!</SEQ>
-<!--
-		<SEQ TYPE="OPERATOR">)</SEQ>
-		<SEQ TYPE="OPERATOR">(</SEQ>
--->
+		<SEQ TYPE="NULL">)</SEQ>
 		<SEQ TYPE="OPERATOR">[</SEQ>
 		<SEQ TYPE="OPERATOR">]</SEQ>
 		<SEQ TYPE="OPERATOR">+</SEQ>

@@ -1,6 +1,6 @@
 /*
  * DefaultInputHandler.java - Default implementation of an input handler
- * Copyright (C) 1999 Slava Pestov
+ * Copyright (C) 1999, 2000, 2001 Slava Pestov
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -31,7 +31,7 @@ import org.gjt.sp.util.Log;
  * The default input handler. It maps sequences of keystrokes into actions
  * and inserts key typed events into the text area.
  * @author Slava Pestov
- * @version $Id: DefaultInputHandler.java,v 1.13 2000/11/27 02:22:16 sp Exp $
+ * @version $Id: DefaultInputHandler.java,v 1.1.1.1 2001/09/02 05:37:37 spestov Exp $
  */
 public class DefaultInputHandler extends InputHandler
 {
@@ -117,6 +117,40 @@ public class DefaultInputHandler extends InputHandler
 	}
 
 	/**
+	 * Returns either an edit action, or a hashtable if the specified key
+	 * is a prefix.
+	 * @param keyBinding The key binding
+	 * @since jEdit 3.2pre5
+	 */
+	public Object getKeyBinding(String keyBinding)
+	{
+		Hashtable current = bindings;
+		StringTokenizer st = new StringTokenizer(keyBinding);
+
+		while(st.hasMoreTokens())
+		{
+			KeyStroke keyStroke = parseKeyStroke(st.nextToken());
+			if(keyStroke == null)
+				return null;
+
+			if(st.hasMoreTokens())
+			{
+				Object o = current.get(keyStroke);
+				if(o instanceof Hashtable)
+					current = (Hashtable)o;
+				else
+					return o;
+			}
+			else
+			{
+				return current.get(keyStroke);
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * Returns if a prefix key has been pressed.
 	 */
 	public boolean isPrefixActive()
@@ -133,60 +167,77 @@ public class DefaultInputHandler extends InputHandler
 		int keyCode = evt.getKeyCode();
 		int modifiers = evt.getModifiers();
 
-		if(modifiers == 0 && bindings == currentBindings
-			&& (keyCode == KeyEvent.VK_ENTER || keyCode == KeyEvent.VK_TAB))
+		if(modifiers == 0
+			&& bindings == currentBindings
+			&& (keyCode == KeyEvent.VK_ENTER
+			|| keyCode == KeyEvent.VK_TAB))
 		{
 			userInput((char)keyCode);
 			evt.consume();
 			return;
 		}
 
-		if((modifiers & ~KeyEvent.SHIFT_MASK) != 0
-			|| evt.isActionKey()
-			|| keyCode == KeyEvent.VK_BACK_SPACE
-			|| keyCode == KeyEvent.VK_DELETE
-			|| keyCode == KeyEvent.VK_ESCAPE
-			|| keyCode == KeyEvent.VK_ENTER
-			|| keyCode == KeyEvent.VK_TAB)
+		if((modifiers & ~KeyEvent.SHIFT_MASK) == 0)
+		{
+			// if modifier active, handle all keys, otherwise
+			// only some
+			switch(keyCode)
+			{
+			case KeyEvent.VK_BACK_SPACE:
+			case KeyEvent.VK_DELETE:
+			case KeyEvent.VK_ESCAPE:
+			case KeyEvent.VK_ENTER:
+			case KeyEvent.VK_TAB:
+				break;
+			default:
+				if(!evt.isActionKey())
+					return;
+				else
+					break;
+			}
+		}
+
+		if(readNextChar != null)
 		{
 			readNextChar = null;
+			view.getStatus().setMessage(null);
+		}
 
-			KeyStroke keyStroke = KeyStroke.getKeyStroke(keyCode,
-				modifiers);
-			Object o = currentBindings.get(keyStroke);
-			if(o == null)
+		KeyStroke keyStroke = KeyStroke.getKeyStroke(keyCode,
+			modifiers);
+		Object o = currentBindings.get(keyStroke);
+		if(o == null)
+		{
+			// Don't beep if the user presses some
+			// key we don't know about unless a
+			// prefix is active. Otherwise it will
+			// beep when caps lock is pressed, etc.
+			if(currentBindings != bindings)
 			{
-				// Don't beep if the user presses some
-				// key we don't know about unless a
-				// prefix is active. Otherwise it will
-				// beep when caps lock is pressed, etc.
-				if(currentBindings != bindings)
-				{
-					Toolkit.getDefaultToolkit().beep();
-					// F10 should be passed on, but C+e F10
-					// shouldn't
-					repeatCount = 0;
-					repeat = false;
-					evt.consume();
-				}
-				currentBindings = bindings;
-				return;
-			}
-			else if(o instanceof EditAction)
-			{
-				currentBindings = bindings;
-
-				invokeAction((EditAction)o);
-
+				Toolkit.getDefaultToolkit().beep();
+				// F10 should be passed on, but C+e F10
+				// shouldn't
+				repeatCount = 0;
+				repeat = false;
 				evt.consume();
-				return;
 			}
-			else if(o instanceof Hashtable)
-			{
-				currentBindings = (Hashtable)o;
-				evt.consume();
-				return;
-			}
+			currentBindings = bindings;
+			return;
+		}
+		else if(o instanceof EditAction)
+		{
+			currentBindings = bindings;
+
+			invokeAction((EditAction)o);
+
+			evt.consume();
+			return;
+		}
+		else if(o instanceof Hashtable)
+		{
+			currentBindings = (Hashtable)o;
+			evt.consume();
+			return;
 		}
 	}
 
@@ -195,37 +246,44 @@ public class DefaultInputHandler extends InputHandler
 	 */
 	public void keyTyped(KeyEvent evt)
 	{
-		int modifiers = evt.getModifiers();
 		char c = evt.getKeyChar();
 
 		// ignore
 		if(c == '\b')
 			return;
 
-		if(currentBindings != bindings)
+		KeyStroke keyStroke;
+
+		// this is a hack. a literal space is impossible to
+		// insert in a key binding string, but you can write
+		// SPACE.
+		if(c == ' ')
+			keyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_SPACE,0);
+		else
+			keyStroke = KeyStroke.getKeyStroke(c);
+
+		Object o = currentBindings.get(keyStroke);
+
+		if(o instanceof Hashtable)
 		{
-			KeyStroke keyStroke = KeyStroke.getKeyStroke(Character.toUpperCase(c));
-			Object o = currentBindings.get(keyStroke);
-
-			if(o instanceof Hashtable)
-			{
-				currentBindings = (Hashtable)o;
-				return;
-			}
-			else if(o instanceof EditAction)
-			{
-				currentBindings = bindings;
-				invokeAction((EditAction)o);
-				return;
-			}
-
-			currentBindings = bindings;
+			currentBindings = (Hashtable)o;
+			return;
 		}
+		else if(o instanceof EditAction)
+		{
+			currentBindings = bindings;
+			invokeAction((EditAction)o);
+			return;
+		}
+
+		// otherwise, reset to default map and do user input
+		currentBindings = bindings;
 
 		if(repeat && Character.isDigit(c))
 		{
 			repeatCount *= 10;
 			repeatCount += (c - '0');
+			view.getStatus().setMessage(null);
 		}
 		else
 			userInput(c);
@@ -257,10 +315,16 @@ public class DefaultInputHandler extends InputHandler
 					modifiers |= InputEvent.ALT_MASK;
 					break;
 				case 'C':
-					modifiers |= InputEvent.CTRL_MASK;
+					if(macOS)
+						modifiers |= InputEvent.META_MASK;
+					else
+						modifiers |= InputEvent.CTRL_MASK;
 					break;
 				case 'M':
-					modifiers |= InputEvent.META_MASK;
+					if(macOS)
+						modifiers |= InputEvent.CTRL_MASK;
+					else
+						modifiers |= InputEvent.META_MASK;
 					break;
 				case 'S':
 					modifiers |= InputEvent.SHIFT_MASK;
@@ -271,11 +335,14 @@ public class DefaultInputHandler extends InputHandler
 		String key = keyStroke.substring(index + 1);
 		if(key.length() == 1)
 		{
-			char ch = Character.toUpperCase(key.charAt(0));
+			char ch = key.charAt(0);
 			if(modifiers == 0)
 				return KeyStroke.getKeyStroke(ch);
 			else
-				return KeyStroke.getKeyStroke(ch,modifiers);
+			{
+				return KeyStroke.getKeyStroke(Character.toUpperCase(ch),
+					modifiers);
+			}
 		}
 		else if(key.length() == 0)
 		{
@@ -307,4 +374,11 @@ public class DefaultInputHandler extends InputHandler
 	// private members
 	private Hashtable bindings;
 	private Hashtable currentBindings;
+
+	private static boolean macOS;
+
+	static
+	{
+		macOS = (System.getProperty("os.name").indexOf("Mac") != -1);
+	}
 }

@@ -271,6 +271,9 @@ class WindowTableModel extends AbstractTableModel
 		{
 			this.name = name;
 			title = jEdit.getProperty(name + ".title");
+			if(title == null)
+				title = name;
+
 			dockPosition = jEdit.getProperty(name + ".dock-position");
 			if(dockPosition == null)
 				dockPosition = DockableWindowManager.FLOATING;
@@ -295,17 +298,3 @@ class WindowTableModel extends AbstractTableModel
 		}
 	}
 }
-
-/*
- * Change Log:
- * $Log: DockingOptionPane.java,v $
- * Revision 1.3  2000/10/30 07:14:04  sp
- * 2.7pre1 branched, GUI improvements
- *
- * Revision 1.2  2000/09/23 03:01:11  sp
- * pre7 yayayay
- *
- * Revision 1.1  2000/08/17 08:04:10  sp
- * Marker loading bug fixed, docking option pane
- *
- */

@@ -32,7 +32,7 @@ import org.gjt.sp.jedit.gui.OptionsDialog;
  * plugins.
  *
  * @author Slava Pestov
- * @version $Id: EditPlugin.java,v 1.8 2000/08/31 02:54:00 sp Exp $
+ * @version $Id: EditPlugin.java,v 1.1.1.1 2001/09/02 05:37:20 spestov Exp $
  * @since jEdit 2.1pre1
  */
 public abstract class EditPlugin
@@ -96,6 +96,15 @@ public abstract class EditPlugin
 	public void createOptionPanes(OptionsDialog optionsDialog) {}
 
 	/**
+	 * Returns the JAR file containing this plugin.
+	 * @since jEdit 3.1pre5
+	 */
+	public EditPlugin.JAR getJAR()
+	{
+		return jar;
+	}
+
+	/**
 	 * A placeholder for a plugin that didn't load.
 	 */
 	public static class Broken extends EditPlugin
@@ -132,8 +141,14 @@ public abstract class EditPlugin
 
 		public void addPlugin(EditPlugin plugin)
 		{
-			plugins.addElement(plugin);
+			plugin.jar = JAR.this;
+
 			plugin.start();
+
+			if(plugin instanceof EBPlugin)
+				EditBus.addToBus((EBPlugin)plugin);
+
+			plugins.addElement(plugin);
 		}
 
 		public EditPlugin[] getPlugins()
@@ -143,22 +158,15 @@ public abstract class EditPlugin
 			return array;
 		}
 
-		public int getIndex()
-		{
-			return index;
-		}
-
-		// package-private members
-		int index;
-
-		JAR(String path, JARClassLoader classLoader)
+		public JAR(String path, JARClassLoader classLoader)
 		{
 			this.path = path;
 			this.classLoader = classLoader;
 			plugins = new Vector();
 		}
 
-		public void getPlugins(Vector vector)
+		// package-private members
+		void getPlugins(Vector vector)
 		{
 			for(int i = 0; i < plugins.size(); i++)
 			{
@@ -171,33 +179,7 @@ public abstract class EditPlugin
 		private JARClassLoader classLoader;
 		private Vector plugins;
 	}
-}
 
-/*
- * ChangeLog:
- * $Log: EditPlugin.java,v $
- * Revision 1.8  2000/08/31 02:54:00  sp
- * Improved activity log, bug fixes
- *
- * Revision 1.7  2000/06/03 07:28:25  sp
- * User interface updates, bug fixes
- *
- * Revision 1.6  2000/06/02 02:21:05  sp
- * minor bug fixes
- *
- * Revision 1.5  2000/05/14 10:55:21  sp
- * Tool bar editor started, improved view registers dialog box
- *
- * Revision 1.4  2000/02/20 03:14:13  sp
- * jEdit.getBrokenPlugins() method
- *
- * Revision 1.3  1999/12/11 06:34:39  sp
- * Bug fixes
- *
- * Revision 1.2  1999/10/10 06:38:45  sp
- * Bug fixes and quicksort routine
- *
- * Revision 1.1  1999/09/30 12:21:04  sp
- * No net access for a month... so here's one big jEdit 2.1pre1
- *
- */
+	// private members
+	private EditPlugin.JAR jar;
+}

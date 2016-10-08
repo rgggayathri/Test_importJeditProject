@@ -3,10 +3,9 @@
 <!DOCTYPE MODE SYSTEM "xmode.dtd">
 
 <!-- VBScript mode by Andre Kaplan -->
-<MODE NAME="vbscript">
+<MODE>
 	<PROPS>
-		<PROPERTY NAME="blockComment" VALUE="'" />
-		<PROPERTY NAME="filenameGlob" VALUE="*.{vbs,bas,cls}" />
+		<PROPERTY NAME="lineComment" VALUE="'" />
 		<PROPERTY NAME="noWordSep" VALUE="_" />
 	</PROPS>
 
@@ -26,7 +25,7 @@
 		<EOL_SPAN TYPE="KEYWORD2">#end</EOL_SPAN>
 
 		<EOL_SPAN TYPE="COMMENT1">'</EOL_SPAN>
-		<EOL_SPAN TYPE="COMMENT1">rem</EOL_SPAN>
+		<EOL_SPAN TYPE="COMMENT1">rem </EOL_SPAN>
 		<SEQ TYPE="NULL">)</SEQ>
 		<SEQ TYPE="NULL">(</SEQ>
 

@@ -29,33 +29,21 @@ import java.awt.*;
 import java.io.File;
 import java.util.*;
 import org.gjt.sp.jedit.browser.VFSBrowser;
-import org.gjt.sp.jedit.gui.BufferOptions;
 import org.gjt.sp.jedit.io.*;
 import org.gjt.sp.jedit.msg.*;
+import org.gjt.sp.jedit.search.RESearchMatcher;
 import org.gjt.sp.jedit.syntax.*;
+import org.gjt.sp.jedit.textarea.*;
 import org.gjt.sp.util.Log;
 
 /**
  * An in-memory copy of an open file.<p>
  *
- * This is basically a Swing document with support for loading and
- * saving, and various other miscallaenous things such as markers.<p>
- *
  * Buffers extend Swing document properties to obtain the default values
- * from jEdit's global properties.<p>
- *
- * The following properties are always defined:
- * <ul>
- * <li>tabSize: the tab size
- * <li>lineSeparator: default line separator. This is rarely useful,
- * because all buffers use "\n" as a separator in memory anyway. Only
- * use this property when reading/writing to the disk
- * </ul>
- *
- * Various other properties are also used by jEdit and plugin actions.
+ * from jEdit's global properties.
  *
  * @author Slava Pestov
- * @version $Id: Buffer.java,v 1.197 2001/01/22 10:39:25 sp Exp $
+ * @version $Id: Buffer.java,v 1.1.1.1 2001/09/02 05:37:06 spestov Exp $
  */
 public class Buffer extends PlainDocument implements EBComponent
 {
@@ -65,15 +53,25 @@ public class Buffer extends PlainDocument implements EBComponent
 	public static final String LINESEP = "lineSeparator";
 
 	/**
-	 * Caret info properties.
-	 * @since 2.2pre7
+	 * Backed up property.
+	 * @since jEdit 3.2pre2
 	 */
-	public static final String SELECTION_START = "Buffer__selStart";
-	public static final String SELECTION_END = "Buffer__selEnd";
-	public static final String SELECTION_RECT = "Buffer__rect";
+	public static final String BACKED_UP = "Buffer__backedUp";
+
+	/**
+	 * Caret info properties.
+	 * @since jEdit 3.2pre1
+	 */
+	public static final String CARET = "Buffer__caret";
+	public static final String SELECTION = "Buffer__selection";
 	public static final String SCROLL_VERT = "Buffer__scrollVert";
 	public static final String SCROLL_HORIZ = "Buffer__scrollHoriz";
-	public static final String OVERWRITE = "Buffer__overwrite";
+
+	/**
+	 * Character encoding used when loading and saving.
+	 * @since jEdit 3.2pre4
+	 */
+	public static final String ENCODING = "encoding";
 
 	/**
 	 * Reloads settings from the properties. This should be called
@@ -82,11 +80,10 @@ public class Buffer extends PlainDocument implements EBComponent
 	 */
 	public void propertiesChanged()
 	{
-		setFlag(SYNTAX,getBooleanProperty("syntax"));
-		if(getFlag(SYNTAX))
-			setTokenMarker(mode.createTokenMarker());
+		if(getBooleanProperty("syntax"))
+			setTokenMarker(mode.getTokenMarker());
 		else
-			setTokenMarker(jEdit.getMode("text").createTokenMarker());
+			setTokenMarker(jEdit.getMode("text").getTokenMarker());
 
 		if(undo != null)
 		{
@@ -104,15 +101,6 @@ public class Buffer extends PlainDocument implements EBComponent
 		// cache these for improved performance
 		putProperty("tabSize",getProperty("tabSize"));
 		putProperty("maxLineLen",getProperty("maxLineLen"));
-	}
-
-	/**
-	 * Displays the buffer options dialog box.
-	 * @since jEdit 2.7pre2
-	 */
-	public void showBufferOptionsDialog(View view)
-	{
-		new BufferOptions(view,this);
 	}
 
 	/**
@@ -196,16 +184,6 @@ public class Buffer extends PlainDocument implements EBComponent
 
 		int lineCount = getDefaultRootElement().getElementCount();
 
-		TokenMarker tokenMarker;
-		if(syntax)
-			tokenMarker = this.tokenMarker;
-		else
-		{
-			tokenMarker = jEdit.getMode("text").createTokenMarker();
-			tokenMarker.insertLines(0,lineCount);
-		}
-
-		SyntaxStyle[] styles = view.getTextArea().getPainter().getStyles();
 		TabExpander expander = null;
 
 		Graphics gfx = null;
@@ -232,6 +210,11 @@ public class Buffer extends PlainDocument implements EBComponent
 			fontStyle = Font.PLAIN;
 		}
 
+		SyntaxStyle[] styles = GUIUtilities.loadStyles(fontFamily,fontSize);
+
+		boolean style = jEdit.getBooleanProperty("print.style");
+		boolean color = jEdit.getBooleanProperty("print.color");
+
 		Font font = new Font(fontFamily,fontStyle,fontSize);
 
 		FontMetrics fm = null;
@@ -246,6 +229,12 @@ public class Buffer extends PlainDocument implements EBComponent
 		int lineNumberDigits = (int)Math.ceil(Math.log(
 			lineCount) / Math.log(10));
 
+		int lineNumberWidth = 0;
+
+		TextRenderer renderer = TextRenderer.createPrintTextRenderer();
+
+		renderer.configure(false,false);
+
 		for(int i = 0; i < lineCount; i++)
 		{
 			if(gfx == null)
@@ -253,11 +242,23 @@ public class Buffer extends PlainDocument implements EBComponent
 				page++;
 
 				gfx = job.getGraphics();
+				renderer.setupGraphics(gfx);
+
 				gfx.setFont(font);
 				fm = gfx.getFontMetrics();
+
+				if(printLineNumbers)
+				{
+					lineNumberWidth = fm.charWidth('0')
+						* lineNumberDigits;
+				}
+				else
+					lineNumberWidth = 0;
+
 				lineHeight = fm.getHeight();
 				tabSize = getTabSize() * fm.charWidth(' ');
-				expander = new PrintTabExpander(leftMargin,tabSize);
+				expander = new PrintTabExpander(leftMargin
+					+ lineNumberWidth,tabSize);
 
 				y = topMargin + lineHeight - fm.getDescent()
 					- fm.getLeading();
@@ -281,15 +282,15 @@ public class Buffer extends PlainDocument implements EBComponent
 			int x = leftMargin;
 			if(printLineNumbers)
 			{
-				int lineNumberWidth = fm.charWidth('0') * lineNumberDigits;
 				String lineNumber = String.valueOf(i + 1);
 				gfx.drawString(lineNumber,(leftMargin + lineNumberWidth)
 					- fm.stringWidth(lineNumber),y);
 				x += lineNumberWidth + fm.charWidth('0');
 			}
 
-			tokenMarker.paintSyntaxLine(this,i,
-				styles,expander,gfx,Color.white,x,y);
+			paintSyntaxLine(i,gfx,x,y,expander,style,color,
+				font,Color.black,Color.white,styles,
+				renderer);
 
 			int bottomOfPage = pageHeight - bottomMargin - lineHeight;
 			if(printFooter)
@@ -337,15 +338,14 @@ public class Buffer extends PlainDocument implements EBComponent
 		if(getFlag(DIRTY))
 		{
 			String[] args = { name };
-			int result = JOptionPane.showConfirmDialog(view,
-				jEdit.getProperty("changedreload.message",args),
-				jEdit.getProperty("changedreload.title"),
-				JOptionPane.YES_NO_OPTION,
+			int result = GUIUtilities.confirm(view,"changedreload",
+				args,JOptionPane.YES_NO_OPTION,
 				JOptionPane.WARNING_MESSAGE);
 			if(result != JOptionPane.YES_OPTION)
 				return;
 		}
 
+		view.getEditPane().saveCaretInfo();
 		load(view,true);
 	}
 
@@ -370,12 +370,12 @@ public class Buffer extends PlainDocument implements EBComponent
 		// view text areas temporarily blank out while a buffer is
 		// being loaded, to indicate to the user that there is no
 		// data available yet.
-		EditBus.send(new BufferUpdate(this,BufferUpdate.LOAD_STARTED));
+		EditBus.send(new BufferUpdate(this,view,BufferUpdate.LOAD_STARTED));
 
 		undo = null;
 		final boolean loadAutosave;
 
-		if(!getFlag(NEW_FILE))
+		if(reload || !getFlag(NEW_FILE))
 		{
 			if(file != null)
 				modTime = file.lastModified();
@@ -413,20 +413,6 @@ public class Buffer extends PlainDocument implements EBComponent
 				StringBuffer sbuf = (StringBuffer)getProperty(
 					BufferIORequest.LOAD_DATA);
 
-				if(reload)
-					clearProperties();
-				else
-				{
-					// reload maxLineLen and tabSize
-					// from the global/mode properties
-					getDocumentProperties().remove(
-						"tabSize");
-					getDocumentProperties().remove(
-						"maxLineLen");
-					getDocumentProperties().remove(
-						BufferIORequest.LOAD_DATA);
-				}
-
 				if(sbuf != null)
 				{
 					try
@@ -441,8 +427,15 @@ public class Buffer extends PlainDocument implements EBComponent
 					}
 				}
 
+				// reload maxLineLen and tabSize
+				// from the global/mode properties
+				getDocumentProperties().remove("tabSize");
+				getDocumentProperties().remove("indentSize");
+				getDocumentProperties().remove("maxLineLen");
+				getDocumentProperties().remove(
+					BufferIORequest.LOAD_DATA);
+
 				undo = new MyUndoManager();
-				undo.addEdit(saveUndo = new SaveUndo());
 				try
 				{
 					undo.setLimit(Integer.parseInt(
@@ -474,11 +467,32 @@ public class Buffer extends PlainDocument implements EBComponent
 				if(loadAutosave)
 					setFlag(DIRTY,true);
 
+				if(jEdit.getBooleanProperty("parseFully"))
+				{
+					for(int i = 0; i < lineCount; i++)
+						markTokens(i);
+				}
+
+				try
+				{
+					int collapseFolds = ((Integer)
+						getProperty("collapseFolds"))
+						.intValue();
+					if(collapseFolds != 0)
+						expandFolds(collapseFolds);
+				}
+				catch(Exception e)
+				{
+				}
+
 				// send some EditBus messages
-				EditBus.send(new BufferUpdate(Buffer.this,
-					BufferUpdate.LOADED));
-				EditBus.send(new BufferUpdate(Buffer.this,
-					BufferUpdate.MARKERS_CHANGED));
+				if(!getFlag(TEMPORARY))
+				{
+					EditBus.send(new BufferUpdate(Buffer.this,
+						view,BufferUpdate.LOADED));
+					EditBus.send(new BufferUpdate(Buffer.this,
+						view,BufferUpdate.MARKERS_CHANGED));
+				}
 			}
 		};
 
@@ -635,9 +649,8 @@ public class Buffer extends PlainDocument implements EBComponent
 			if(newModTime != modTime)
 			{
 				Object[] args = { this.path };
-				int result = JOptionPane.showConfirmDialog(view,
-					jEdit.getProperty("filechanged-save.message",args),
-					jEdit.getProperty("filechanged.title"),
+				int result = GUIUtilities.confirm(view,
+					"filechanged-save",args,
 					JOptionPane.YES_NO_OPTION,
 					JOptionPane.WARNING_MESSAGE);
 				if(result != JOptionPane.YES_OPTION)
@@ -646,7 +659,7 @@ public class Buffer extends PlainDocument implements EBComponent
 		}
 
 		setFlag(IO,true);
-		EditBus.send(new BufferUpdate(this,BufferUpdate.SAVING));
+		EditBus.send(new BufferUpdate(this,view,BufferUpdate.SAVING));
 
 		if(path == null)
 			path = this.path;
@@ -687,7 +700,7 @@ public class Buffer extends PlainDocument implements EBComponent
 					// and clearing of the dirty flag
 					try
 					{
-						writeLock();
+						Buffer.this._writeLock();
 
 						if(autosaveFile != null)
 							autosaveFile.delete();
@@ -697,16 +710,10 @@ public class Buffer extends PlainDocument implements EBComponent
 						setFlag(NEW_FILE,false);
 						setFlag(UNTITLED,false);
 						setFlag(DIRTY,false);
-
-						// can only have one of these in the queue
-						if(saveUndo != null)
-							saveUndo.die();
-
-						undo.addEdit(saveUndo = new SaveUndo());
 					}
 					finally
 					{
-						writeUnlock();
+						Buffer.this._writeUnlock();
 					}
 
 					if(!getPath().equals(oldPath))
@@ -719,12 +726,23 @@ public class Buffer extends PlainDocument implements EBComponent
 						modTime = file.lastModified();
 
 					EditBus.send(new BufferUpdate(Buffer.this,
-						BufferUpdate.DIRTY_CHANGED));
+						view,BufferUpdate.DIRTY_CHANGED));
 				}
 			}
 		});
 
 		return true;
+	}
+
+	// these are only public so that an inner class can access them!
+	public void _writeLock()
+	{
+		writeLock();
+	}
+
+	public void _writeUnlock()
+	{
+		writeUnlock();
 	}
 
 	/**
@@ -749,13 +767,21 @@ public class Buffer extends PlainDocument implements EBComponent
 	 */
 	public void checkModTime(View view)
 	{
-		if(!jEdit.getBooleanProperty("view.checkModStatus"))
-			return;
-
 		// don't do these checks while a save is in progress,
 		// because for a moment newModTime will be greater than
 		// oldModTime, due to the multithreading
 		if(file == null || getFlag(NEW_FILE) || getFlag(IO))
+			return;
+
+		boolean newReadOnly = (file.exists() && !file.canWrite());
+		if(newReadOnly != getFlag(READ_ONLY))
+		{
+			setFlag(READ_ONLY,newReadOnly);
+			EditBus.send(new BufferUpdate(this,
+				view,BufferUpdate.DIRTY_CHANGED));
+		}
+
+		if(!jEdit.getBooleanProperty("view.checkModStatus"))
 			return;
 
 		long oldModTime = modTime;
@@ -769,23 +795,22 @@ public class Buffer extends PlainDocument implements EBComponent
 			{
 				setFlag(NEW_FILE,true);
 				EditBus.send(new BufferUpdate(this,
-					BufferUpdate.DIRTY_CHANGED));
+					view,BufferUpdate.DIRTY_CHANGED));
 				Object[] args = { path };
 				GUIUtilities.message(view,"filedeleted",args);
 				return;
 			}
 
-			String prop = (isDirty() ? "filechanged-dirty.message"
-				: "filechanged-focus.message");
+			String prop = (isDirty() ? "filechanged-dirty"
+				: "filechanged-focus");
 
 			Object[] args = { path };
-			int result = JOptionPane.showConfirmDialog(view,
-				jEdit.getProperty(prop,args),
-				jEdit.getProperty("filechanged.title"),
-				JOptionPane.YES_NO_OPTION,
+			int result = GUIUtilities.confirm(view,
+				prop,args,JOptionPane.YES_NO_OPTION,
 				JOptionPane.WARNING_MESSAGE);
 			if(result == JOptionPane.YES_OPTION)
 			{
+				view.getEditPane().saveCaretInfo();
 				load(view,true);
 			}
 		}
@@ -948,16 +973,13 @@ public class Buffer extends PlainDocument implements EBComponent
 		{
 			setFlag(DIRTY,false);
 			setFlag(AUTOSAVE_DIRTY,false);
-
-			// can only have one of these in the queue
-			if(saveUndo != null)
-				saveUndo.die();
-
-			undo.addEdit(saveUndo = new SaveUndo());
 		}
 
 		if(d != old_d)
-			EditBus.send(new BufferUpdate(this,BufferUpdate.DIRTY_CHANGED));
+		{
+			EditBus.send(new BufferUpdate(this,null,
+				BufferUpdate.DIRTY_CHANGED));
+		}
 	}
 
 	/**
@@ -1136,29 +1158,34 @@ public class Buffer extends PlainDocument implements EBComponent
 	}
 
 	/**
-	 * Removes trailing whitespace from all lines in the specified range.
-	 * @param first The start line
-	 * @param last The end line
-	 * @since jEdit 2.7pre2
+	 * Returns if a compound edit is currently active.
+	 * @since jEdit 3.1pre1
 	 */
-	public void removeTrailingWhiteSpace(int first, int last)
+	public boolean insideCompoundEdit()
 	{
-		Segment seg = new Segment();
+		return compoundEdit != null;
+	}
 
-		int line, pos, lineStart, lineEnd, tail;
-
+	/**
+	 * Removes trailing whitespace from all lines in the specified list.
+	 * @param list The line numbers
+	 * @since jEdit 3.2pre1
+	 */
+	public void removeTrailingWhiteSpace(int[] lines)
+	{
 		Element map = getDefaultRootElement();
-
 		try
 		{
 			beginCompoundEdit();
 
-			for (line = first; line <= last; line++)
+			for(int i = 0; i < lines.length; i++)
 			{
-				Element lineElement = map.getElement(line);
+				int pos, lineStart, lineEnd, tail;
+
+				Element lineElement = map.getElement(lines[i]);
 				getText(lineElement.getStartOffset(),
 					lineElement.getEndOffset()
-					- lineElement.getStartOffset() - 1);
+					- lineElement.getStartOffset() - 1,seg);
 
 				// blank line
 				if (seg.count == 0) continue;
@@ -1177,8 +1204,7 @@ public class Buffer extends PlainDocument implements EBComponent
 				// no whitespace
 				if (tail == 0) continue;
 
-				remove(lineElement.getEndOffset() - 1 - tail,
-					tail);
+				remove(lineElement.getEndOffset() - 1 - tail,tail);
 			}
 		}
 		catch (BadLocationException ble)
@@ -1192,24 +1218,24 @@ public class Buffer extends PlainDocument implements EBComponent
 	}
 
 	/**
-	 * Shifts the indent of each line in the specified range to the left.
-	 * @param first The first line
-	 * @param last The last line
+	 * Shifts the indent of each line in the specified list to the left.
+	 * @param lines The line numbers
+	 * @since jEdit 3.2pre1
 	 */
-	public void shiftIndentLeft(int first, int last)
+	public void shiftIndentLeft(int[] lines)
 	{
+		int tabSize = getTabSize();
+		int indentSize = getIndentSize();
+		boolean noTabs = getBooleanProperty("noTabs");
+		Element map = getDefaultRootElement();
+
 		try
 		{
 			beginCompoundEdit();
 
-			int tabSize = getTabSize();
-			int indentSize = getIndentSize();
-			boolean noTabs = getBooleanProperty("noTabs");
-			Element map = getDefaultRootElement();
-
-			for(int i = first; i <= last; i++)
+			for(int i = 0; i < lines.length; i++)
 			{
-				Element lineElement = map.getElement(i);
+				Element lineElement = map.getElement(lines[i]);
 				int lineStart = lineElement.getStartOffset();
 				String line = getText(lineStart,
 					lineElement.getEndOffset() - lineStart - 1);
@@ -1220,15 +1246,17 @@ public class Buffer extends PlainDocument implements EBComponent
 				int whiteSpaceWidth = Math.max(0,MiscUtilities
 					.getLeadingWhiteSpaceWidth(line,tabSize)
 					- indentSize);
+
 				remove(lineStart,whiteSpace);
 				insertString(lineStart,MiscUtilities
 					.createWhiteSpace(whiteSpaceWidth,
 					(noTabs ? 0 : tabSize)),null);
 			}
+
 		}
-		catch(BadLocationException bl)
+		catch (BadLocationException ble)
 		{
-			Log.log(Log.ERROR,this,bl);
+			Log.log(Log.ERROR, this, ble);
 		}
 		finally
 		{
@@ -1237,11 +1265,11 @@ public class Buffer extends PlainDocument implements EBComponent
 	}
 
 	/**
-	 * Shifts the indent of each line in the specified range to the right.
-	 * @param first The first line
-	 * @param last The last line
+	 * Shifts the indent of each line in the specified list to the right.
+	 * @param lines The line numbers
+	 * @since jEdit 3.2pre1
 	 */
-	public void shiftIndentRight(int first, int last)
+	public void shiftIndentRight(int[] lines)
 	{
 		try
 		{
@@ -1251,9 +1279,9 @@ public class Buffer extends PlainDocument implements EBComponent
 			int indentSize = getIndentSize();
 			boolean noTabs = getBooleanProperty("noTabs");
 			Element map = getDefaultRootElement();
-			for(int i = first; i <= last; i++)
+			for(int i = 0; i < lines.length; i++)
 			{
-				Element lineElement = map.getElement(i);
+				Element lineElement = map.getElement(lines[i]);
 				int lineStart = lineElement.getStartOffset();
 				String line = getText(lineStart,
 					lineElement.getEndOffset() - lineStart - 1);
@@ -1329,9 +1357,11 @@ public class Buffer extends PlainDocument implements EBComponent
 	{
 		return mode;
 	}
-	
+
 	/**
-	 * Sets this buffer's edit mode.
+	 * Sets this buffer's edit mode. Note that calling this before a buffer
+	 * is loaded will have no effect; in that case, set the "mode" property
+	 * to the name of the mode. A bit inelegant, I know...
 	 * @param mode The mode
 	 */
 	public void setMode(Mode mode)
@@ -1352,7 +1382,10 @@ public class Buffer extends PlainDocument implements EBComponent
 
 		// don't fire it for initial mode set
 		if(oldMode != null)
-			EditBus.send(new BufferUpdate(this,BufferUpdate.MODE_CHANGED));
+		{
+			EditBus.send(new BufferUpdate(this,null,
+				BufferUpdate.MODE_CHANGED));
+		}
 	}
 
 	/**
@@ -1390,7 +1423,7 @@ public class Buffer extends PlainDocument implements EBComponent
 
 			for(int i = 0; i < modes.length; i++)
 			{
-				if(modes[i].accept(this,nogzName,line))
+				if(modes[i].accept(nogzName,line))
 				{
 					setMode(modes[i]);
 					return;
@@ -1401,6 +1434,11 @@ public class Buffer extends PlainDocument implements EBComponent
 		{
 			Log.log(Log.ERROR,this,bl);
 		}
+
+		Mode defaultMode = jEdit.getMode(jEdit.getProperty("buffer.defaultMode"));
+		if(defaultMode == null)
+			defaultMode = jEdit.getMode("text");
+		setMode(defaultMode);
 	}
 
 	/**
@@ -1436,7 +1474,7 @@ public class Buffer extends PlainDocument implements EBComponent
 			try
 			{
 				indentPrevLineRE = new RE(_indentPrevLine,
-					RE.REG_ICASE,RESyntax.RE_SYNTAX_PERL5);
+					RE.REG_ICASE,RESearchMatcher.RE_SYNTAX_JEDIT);
 			}
 			catch(REException re)
 			{
@@ -1474,7 +1512,7 @@ public class Buffer extends PlainDocument implements EBComponent
 					break;
 				}
 			}
-	
+
 			if(prevLine == null)
 				return false;
 		}
@@ -1646,25 +1684,30 @@ public class Buffer extends PlainDocument implements EBComponent
 	}
 
 	/**
-	 * Returns the token marker for this buffer.
+	 * Indents all specified lines.
+	 * @param start The first line to indent
+	 * @param end The last line to indent
+	 * @since jEdit 3.1pre3
 	 */
-	public final TokenMarker getTokenMarker()
+	public void indentLines(int start, int end)
 	{
-		return tokenMarker;
+		beginCompoundEdit();
+		for(int i = start; i <= end; i++)
+			indentLine(i,true,true);
+		endCompoundEdit();
 	}
 
 	/**
-	 * Sets the token marker that is to be used to split lines of
-	 * this document up into tokens.
-	 * @param tm The new token marker
+	 * Indents all specified lines.
+	 * @param lines The line numbers
+	 * @since jEdit 3.2pre1
 	 */
-	public void setTokenMarker(TokenMarker tm)
+	public void indentLines(int[] lines)
 	{
-		if(tm == null)
-			throw new NullPointerException("token marker cannot be null");
-
-		tokenMarker = tm;
-		tokenMarker.insertLines(0,getDefaultRootElement().getElementCount());
+		beginCompoundEdit();
+		for(int i = 0; i < lines.length; i++)
+			indentLine(lines[i],true,true);
+		endCompoundEdit();
 	}
 
 	/**
@@ -1681,20 +1724,878 @@ public class Buffer extends PlainDocument implements EBComponent
 	 */
 	public void tokenizeLines(int start, int len)
 	{
-		tokenMarker.linesChanged(start,len);
+		linesChanged(start,len);
 
-		Segment lineSegment = new Segment();
+		for(int i = 0; i < len; i++)
+			markTokens(start + i);
+	}
+
+	/**
+	 * Paints the specified line onto the graphics context.
+	 * @since jEdit 3.2pre6
+	 */
+	public int paintSyntaxLine(int lineIndex, Graphics gfx, int _x, int _y,
+		TabExpander expander, boolean style, boolean color,
+		Font defaultFont, Color foreground, Color background,
+		SyntaxStyle[] styles, TextRenderer renderer)
+	{
+		float x = (float)_x;
+		float y = (float)_y;
+
+		LineInfo info = lineInfo[lineIndex];
+
+		if(info.tokensValid)
+		{
+			// have to do this 'manually'
+			Element lineElement = getDefaultRootElement()
+				.getElement(lineIndex);
+			int lineStart = lineElement.getStartOffset();
+			try
+			{
+				getText(lineStart,lineElement.getEndOffset()
+					- lineStart - 1,seg);
+			}
+			catch(BadLocationException e)
+			{
+				Log.log(Log.ERROR,this,e);
+			}
+		}
+		else
+			markTokens(lineIndex);
+
+		Token tokens = info.firstToken;
+
+		// the above should leave the text in the 'seg' segment
+		char[] text = seg.array;
+
+		int off = seg.offset;
+
+		for(;;)
+		{
+			byte id = tokens.id;
+			if(id == Token.END)
+				break;
+
+			Color tokenForeground;
+			Color tokenBackground = null;
+			if(id == Token.NULL)
+			{
+				gfx.setFont(defaultFont);
+				tokenForeground = foreground;
+			}
+			else
+			{
+				if(style)
+					gfx.setFont(styles[id].getFont());
+				else
+					gfx.setFont(defaultFont);
+
+				if(color)
+				{
+					tokenBackground = styles[id].getBackgroundColor();
+					tokenForeground = styles[id].getForegroundColor();
+				}
+				else
+					tokenForeground = foreground;
+			}
+
+			int len = tokens.length;
+			x = renderer.drawChars(text,off,len,gfx,x,y,expander,
+				tokenForeground,tokenBackground,background);
+
+			off += len;
+
+			tokens = tokens.next;
+		}
+
+		return (int)x;
+	}
+
+	/**
+	 * Returns the syntax tokens for the specified line.
+	 * @param lineIndex The line number
+	 * @since jEdit 3.1pre1
+	 */
+	public LineInfo markTokens(int lineIndex)
+	{
+		LineInfo info = lineInfo[lineIndex];
+
+		/* If cached tokens are valid, return 'em */
+		if(info.tokensValid)
+			return info;
+
+		//long _start = System.currentTimeMillis();
+
+		/*
+		 * Else, go up to 100 lines back, looking for a line with
+		 * cached tokens. Tokenize from that line to this line.
+		 */
+		int start = Math.max(0,lineIndex - 100) - 1;
+		int end = Math.max(0,lineIndex - 100);
+
+		for(int i = lineIndex - 1; i > end; i--)
+		{
+			if(lineInfo[i].tokensValid)
+			{
+				start = i;
+				break;
+			}
+		}
+
+		LineInfo prev;
+		if(start == -1)
+			prev = null;
+		else
+			prev = lineInfo[start];
+
+		//System.err.println("i=" + lineIndex + ",start=" + start);
 		Element map = getDefaultRootElement();
 
-		len += start;
+		for(int i = start + 1; i <= lineIndex; i++)
+		{
+			info = lineInfo[i];
+			if(info.tokensValid)
+			{
+				prev = info;
+				continue;
+			}
 
-		for(int i = start; i < len; i++)
-			tokenMarker.markTokens(this,i);
+			Element lineElement = map.getElement(i);
+			int lineStart = lineElement.getStartOffset();
+			try
+			{
+				getText(lineStart,lineElement.getEndOffset()
+					- lineStart - 1,seg);
+			}
+			catch(BadLocationException e)
+			{
+				Log.log(Log.ERROR,this,e);
+			}
+
+			/* Prepare for tokenization */
+			info.lastToken = null;
+
+			ParserRule oldRule = info.context.inRule;
+			TokenMarker.LineContext oldParent = info.context.parent;
+
+			tokenMarker.markTokens(prev,info,seg);
+
+			ParserRule newRule = info.context.inRule;
+			TokenMarker.LineContext newParent = info.context.parent;
+
+			info.tokensValid = true;
+
+			if(i != lastTokenizedLine)
+			{
+				nextLineRequested = false;
+				lastTokenizedLine = i;
+			}
+
+			nextLineRequested |= (oldRule != newRule || oldParent != newParent);
+
+			info.addToken(0,Token.END);
+
+			prev = info;
+		}
+
+		if(nextLineRequested && lineCount - lineIndex > 1)
+		{
+			linesChanged(lineIndex + 1,lineCount - lineIndex - 1);
+		}
+
+		//System.err.println(System.currentTimeMillis() - _start);
+
+		return info;
+	}
+
+	/**
+	 * Store the width of a line, in pixels.
+	 * @param lineIndex The line number
+	 * @param width The width
+	 * @since jEdit 3.1pre1
+	 */
+	public boolean setLineWidth(int lineIndex, int width)
+	{
+		LineInfo info = lineInfo[lineIndex];
+		int oldWidth = info.width;
+		info.width = width;
+		return width != oldWidth;
+	}
+
+	/**
+	 * Returns the maximum line width in the specified line range.
+	 * The strange mix of physical/virtual line numbers is due to
+	 * the way the text area paints lines.
+	 * @param start The first physical line
+	 * @param len The number of virtual lines from the first line
+	 * @since jEdit 3.1pre1
+	 */
+	public int getMaxLineWidth(int start, int len)
+	{
+		int retVal = 0;
+		int lines = 0;
+		for(int i = start; ; i++)
+		{
+			if(i >= lineCount || lines >= len)
+				break;
+
+			LineInfo info = lineInfo[i];
+			if(info.visible)
+			{
+				retVal = Math.max(lineInfo[i].width,retVal);
+				lines++;
+			}
+		}
+		return retVal;
+	}
+
+	/*
+	 * Returns true if the next line should be repainted. This
+	 * will return true after a line has been tokenized that starts
+	 * a multiline token that continues onto the next line.
+	 */
+	public boolean isNextLineRequested()
+	{
+		return nextLineRequested;
+	}
+
+	/**
+	 * Returns the line info object for the specified line.
+	 * @since jEdit 3.1pre1
+	 */
+	public LineInfo getLineInfo(int line)
+	{
+		return lineInfo[line];
+	}
+
+	/**
+	 * Returns if the specified line is visible.
+	 * @since jEdit 3.1pre1
+	 */
+	public boolean isLineVisible(int line)
+	{
+		return lineInfo[line].visible;
+	}
+
+	/**
+	 * Returns if the specified line begins a fold.
+	 * @since jEdit 3.1pre1
+	 */
+	public boolean isFoldStart(int line)
+	{
+		if(line == lineCount - 1)
+			return false;
+
+		// how it works:
+
+		// - if a line has a greater fold level than the next,
+		//   it is a fold
+
+		// - if a line is invisible, it is also a fold, even
+		//   if the fold level is the same (rationale: changing
+		//   indent levels while folds are collapsed shouldn't
+		//   create pernamently inaccessable sections)
+
+		// - exception to the above: if the line is the last
+		//   virtual line, don't report it as a fold if the
+		//   fold levels are the same and the next is invisible,
+		//   otherwise the last narrowed line will always be
+		//   a fold start which is silly
+
+		// note that the last two cases are temporarily disabled
+		// in 3.1pre3 because expandFoldAt() doesn't handle them
+		// properly.
+		return getFoldLevel(line) < getFoldLevel(line + 1);
+			/*|| (line != virtualLines[virtualLineCount - 1]
+			&& !lineInfo[line + 1].visible);*/
+	}
+
+	/**
+	 * Returns the fold level of the specified line.
+	 * @since jEdit 3.1pre1
+	 */
+	public int getFoldLevel(int line)
+	{
+		LineInfo info = lineInfo[line];
+
+		if(info.foldLevelValid)
+			return info.foldLevel;
+		else
+		{
+			boolean changed = false;
+
+			// make this configurable!
+			int tabSize = getTabSize();
+
+			Element lineElement = getDefaultRootElement()
+				.getElement(line);
+			int start = lineElement.getStartOffset();
+			try
+			{
+				getText(start,lineElement.getEndOffset() - start - 1,seg);
+			}
+			catch(BadLocationException bl)
+			{
+				Log.log(Log.ERROR,this,bl);
+			}
+
+			int offset = seg.offset;
+			int count = seg.count;
+
+			int whitespace = 0;
+
+			if(count == 0)
+			{
+				// empty line. inherit previous line's fold level
+				if(line != 0)
+					whitespace = getFoldLevel(line - 1);
+				else
+					whitespace = 0;
+			}
+			else
+			{
+				// this is so that lines consisting of only
+				// whitespace don't cause disruptions
+				boolean seenNonWhitespace = false;
+loop:				for(int i = 0; i < count; i++)
+				{
+					switch(seg.array[offset + i])
+					{
+					case ' ':
+						whitespace++;
+						break;
+					case '\t':
+						whitespace += (tabSize - whitespace % tabSize);
+						break;
+					default:
+						seenNonWhitespace = true;
+						break loop;
+					}
+				}
+
+				if(!seenNonWhitespace)
+				{
+					if(line != 0)
+						whitespace = getFoldLevel(line - 1);
+					else
+						whitespace = 0;
+				}
+			}
+
+			if(info.foldLevel != whitespace)
+			{
+				info.foldLevel = whitespace;
+				fireFoldLevelsChanged(line - 1,line - 1);
+			}
+
+			info.foldLevelValid = true;
+			return whitespace;
+		}
+	}
+
+	/**
+	 * Returns the previous visible line before the specified index, or
+	 * -1 if no previous lines are visible.
+	 * @param lineNo The line
+	 * @since jEdit 3.1pre1
+	 */
+	public int getPrevVisibleLine(int lineNo)
+	{
+		for(int i = lineNo - 1; i >= 0; i--)
+		{
+			if(lineInfo[i].visible)
+				return i;
+		}
+
+		return -1;
+	}
+
+	/**
+	 * Returns the next visible line after the specified index, or
+	 * -1 if no subsequent lines are visible.
+	 * @param lineNo The line
+	 * @since jEdit 3.1pre1
+	 */
+	public int getNextVisibleLine(int lineNo)
+	{
+		for(int i = lineNo + 1; i < lineCount; i++)
+		{
+			if(lineInfo[i].visible)
+				return i;
+		}
+
+		return -1;
+	}
+
+	/**
+	 * Maps a virtual line number to a physical line number. To simplify
+	 * matters for text area highlighters, this method maps out-of-bounds
+	 * line numbers as well.
+	 * @since jEdit 3.1pre1
+	 */
+	public int virtualToPhysical(int lineNo)
+	{
+		// debugging code
+		if((lineNo < virtualLineCount && lineNo >= virtualLines.length)
+			|| lineNo < 0)
+			throw new RuntimeException("lineNo = " + lineNo);
+
+		if(lineNo >= virtualLineCount)
+			return lineCount + (lineNo - virtualLineCount);
+
+		return virtualLines[lineNo];
+	}
+
+	/**
+	 * Maps a physical line number to a virtual line number.
+	 * @since jEdit 3.1pre1
+	 */
+	public int physicalToVirtual(int lineNo)
+	{
+		int start = 0;
+		int end = virtualLineCount - 1;
+
+		if(lineNo < virtualLines[start])
+			return start;
+		else if(lineNo > virtualLines[end])
+			return end;
+
+		// funky binary search
+		for(;;)
+		{
+			switch(end - start)
+			{
+			case 0:
+				if(virtualLines[start] < lineNo)
+					return start + 1;
+				else
+					return start;
+			case 1:
+				if(virtualLines[start] < lineNo)
+				{
+					if(virtualLines[end] < lineNo)
+						return end + 1;
+					else
+						return end;
+				}
+				else
+					return start;
+			default:
+				int pivot = start + (end - start) / 2;
+				int value = virtualLines[pivot];
+				if(value == lineNo)
+					return pivot;
+				else if(value < lineNo)
+					start = pivot + 1;
+				else
+					end = pivot - 1;
+				break;
+			}
+		}
+	}
+
+	/**
+	 * Collapse the fold that contains the specified line number.
+	 * @param line The first line number of the fold
+	 * @return False if there are no folds in the buffer
+	 * @since jEdit 3.1pre1
+	 */
+	public boolean collapseFoldAt(int line)
+	{
+		int initialFoldLevel = getFoldLevel(line);
+
+		int start = 0;
+		int end = lineCount - 1;
+
+		if(line != lineCount - 1
+			&& getFoldLevel(line + 1) > initialFoldLevel)
+		{
+			// this line is the start of a fold
+			start = line + 1;
+
+			for(int i = line + 1; i < lineCount; i++)
+			{
+				if(getFoldLevel(i) <= initialFoldLevel)
+				{
+					end = i - 1;
+					break;
+				}
+			}
+		}
+		else
+		{
+			boolean ok = false;
+
+			// scan backwards looking for the start
+			for(int i = line - 1; i >= 0; i--)
+			{
+				if(getFoldLevel(i) < initialFoldLevel)
+				{
+					start = i + 1;
+					ok = true;
+					break;
+				}
+			}
+
+			if(!ok)
+			{
+				// no folds in buffer
+				return false;
+			}
+
+			for(int i = line + 1; i < lineCount; i++)
+			{
+				if(getFoldLevel(i) < initialFoldLevel)
+				{
+					end = i - 1;
+					break;
+				}
+			}
+		}
+
+		int delta = (end - start + 1);
+
+		for(int i = start; i <= end; i++)
+		{
+			LineInfo info = lineInfo[i];
+			if(info.visible)
+				info.visible = false;
+			else
+				delta--;
+		}
+
+		if(delta == 0)
+		{
+			// user probably pressed A+BACK_SPACE twice
+			return false;
+		}
+
+		//System.err.println("collapse from " + start + " to " + end);
+
+		// I forgot to do this at first and it took me ages to
+		// figure out
+		start = physicalToVirtual(start);
+
+		//System.err.println("virtualized start is " + start);
+
+		// update virtual -> physical map
+		virtualLineCount -= delta;
+
+		//System.err.println("new virtual line count is " + virtualLineCount);
+
+		System.arraycopy(virtualLines,start + delta,virtualLines,start,
+			virtualLines.length - start - delta);
+
+		//System.err.println("copy from " + (start + delta)
+		//	+ " to " + start);
+
+		fireFoldStructureChanged();
+
+		return true;
+	}
+
+	/**
+	 * Expand the fold that begins at the specified line number.
+	 * @param line The first line number of the fold
+	 * @param fully If true, fold will be expanded fully, otherwise
+	 * only one level will be expanded
+	 * @param textArea Text area for scrolling purposes
+	 * @return False if there are no folds in the buffer
+	 * @since jEdit 3.3pre3
+	 */
+	public boolean expandFoldAt(int line, boolean fully, JEditTextArea textArea)
+	{
+		int initialFoldLevel = getFoldLevel(line);
+
+		int start = 0;
+		int end = lineCount - 1;
+
+		if(line != lineCount - 1
+			&& lineInfo[line].visible
+			&& !lineInfo[line + 1].visible
+			&& getFoldLevel(line + 1) > initialFoldLevel)
+		{
+			// this line is the start of a fold
+			start = line + 1;
+
+			for(int i = line + 1; i < lineCount; i++)
+			{
+				if(lineInfo[i].visible && getFoldLevel(i) <= initialFoldLevel)
+				{
+					end = i - 1;
+					break;
+				}
+			}
+		}
+		else
+		{
+			/* if(lineInfo[line].visible)
+			{
+				// the user probably pressed A+ENTER twice
+				return false;
+			} */
+
+			boolean ok = false;
+
+			// scan backwards looking for the start
+			for(int i = line - 1; i >= 0; i--)
+			{
+				if(lineInfo[i].visible && getFoldLevel(i) < initialFoldLevel)
+				{
+					start = i + 1;
+					ok = true;
+					break;
+				}
+			}
+
+			if(!ok)
+			{
+				// no folds in buffer
+				return false;
+			}
+
+			for(int i = line + 1; i < lineCount; i++)
+			{
+				if(lineInfo[i].visible && getFoldLevel(i) < initialFoldLevel)
+				{
+					end = i - 1;
+					break;
+				}
+			}
+		}
+
+		int delta = 0;
+		int tmpMapLen = 0;
+		int[] tmpVirtualMap = new int[end - start + 1];
+
+		// we need a different value of initialFoldLevel here!
+		initialFoldLevel = getFoldLevel(start);
+
+		for(int i = start; i <= end; i++)
+		{
+			LineInfo info = lineInfo[i];
+			if(info.visible)
+			{
+				// user will be confused if 'expand fold'
+				// hides lines
+				tmpVirtualMap[tmpMapLen++] = i;
+			}
+			else if(!fully && getFoldLevel(i) > initialFoldLevel)
+			{
+				// don't expand lines with higher fold
+				// levels
+			}
+			else
+			{
+				// System.err.println("adding to map: " + i);
+				tmpVirtualMap[tmpMapLen++] = i;
+				delta++;
+				info.visible = true;
+			}
+		}
+
+		// I forgot to do this at first and it took me ages to
+		// figure out
+		int virtualLine;
+		if(start > virtualLines[virtualLineCount - 1])
+			virtualLine = virtualLineCount;
+		else
+			virtualLine = physicalToVirtual(start);
+
+		//System.err.println("virtual start is " + virtualLine
+		//	+ ", physical start is " + start);
+		//System.err.println("end=" + end + ",delta=" + delta);
+
+		// update virtual -> physical map
+		virtualLineCount += delta;
+
+		//System.err.println("virtual line count is " + virtualLineCount);
+
+		if(virtualLines.length <= virtualLineCount)
+		{
+			int[] virtualLinesN = new int[(virtualLineCount + 1) * 2];
+			System.arraycopy(virtualLines,0,
+				virtualLinesN,0,virtualLines.length);
+			virtualLines = virtualLinesN;
+		}
+
+		//System.err.println("copy from " + (virtualLine)
+		//	+ " to " + (virtualLine + delta));
+		//System.err.println("foo: " + virtualLines[virtualLine]);
+
+		System.arraycopy(virtualLines,virtualLine,virtualLines,
+			virtualLine + delta,virtualLines.length
+			- virtualLine - delta);
+
+		for(int j = 0; j < tmpMapLen; j++)
+		{
+			//System.err.println((virtualLine + j) + " maps to " + tmpVirtualMap[j]);
+			virtualLines[virtualLine + j] = tmpVirtualMap[j];
+		}
+
+		fireFoldStructureChanged();
+
+		if(textArea != null)
+		{
+			int firstLine = textArea.getFirstLine();
+			int visibleLines = textArea.getVisibleLines();
+			if(virtualLine + delta >= firstLine + visibleLines
+				&& delta < visibleLines - 1)
+			{
+				textArea.setFirstLine(virtualLine + delta - visibleLines + 1);
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * This is intended to be called from actions.xml.
+	 * @since jEdit 3.1pre1
+	 */
+	public void expandFolds(char digit)
+	{
+		if(digit < '1' || digit > '9')
+		{
+			Toolkit.getDefaultToolkit().beep();
+			return;
+		}
+		else
+			expandFolds((int)(digit - '1') + 1);
+	}
+
+	/**
+	 * Expand all folds in the buffer up to a specified level.
+	 * @param level All folds less than this level will be expanded,
+	 * others will be collapsed. This is not the actual fold level;
+	 * it is multiplied by the indent size first
+	 * @since jEdit 3.1pre1
+	 */
+	public void expandFolds(int level)
+	{
+		if(virtualLines.length <= lineCount)
+		{
+			int[] virtualLinesN = new int[(lineCount + 1) * 2];
+			System.arraycopy(virtualLines,0,
+				virtualLinesN,0,virtualLines.length);
+			virtualLines = virtualLinesN;
+		}
+
+		level = (level - 1) * getIndentSize() + 1;
+
+		/* this ensures that the first line is always visible */
+		boolean seenVisibleLine = false;
+
+		virtualLineCount = 0;
+
+		for(int i = 0; i < lineCount; i++)
+		{
+			if(!seenVisibleLine || getFoldLevel(i) < level)
+			{
+				seenVisibleLine = true;
+				lineInfo[i].visible = true;
+				virtualLines[virtualLineCount++] = i;
+			}
+			else
+				lineInfo[i].visible = false;
+		}
+
+		fireFoldStructureChanged();
+	}
+
+	/**
+	 * Expand all folds in the specified document.
+	 * @since jEdit 3.1pre1
+	 */
+	public void expandAllFolds()
+	{
+		if(virtualLines.length <= lineCount)
+		{
+			int[] virtualLinesN = new int[(lineCount + 1) * 2];
+			System.arraycopy(virtualLines,0,
+				virtualLinesN,0,virtualLines.length);
+			virtualLines = virtualLinesN;
+		}
+
+		virtualLineCount = lineCount;
+		for(int i = 0; i < lineCount; i++)
+		{
+			virtualLines[i] = i;
+			lineInfo[i].visible = true;
+		}
+
+		fireFoldStructureChanged();
+	}
+
+	/**
+	 * Narrows the visible portion of the buffer to the specified
+	 * line range.
+	 * @param start The first line
+	 * @param end The last line
+	 * @since jEdit 3.1pre3
+	 */
+	public void narrow(int start, int end)
+	{
+		virtualLineCount = end - start + 1;
+		virtualLines = new int[virtualLineCount];
+
+		for(int i = 0; i < start; i++)
+			lineInfo[i].visible = false;
+
+		for(int i = start; i <= end; i++)
+		{
+			LineInfo info = lineInfo[i];
+			info.visible = true;
+			virtualLines[i - start] = i;
+		}
+
+		for(int i = end + 1; i < lineCount; i++)
+			lineInfo[i].visible = false;
+
+		fireFoldStructureChanged();
+	}
+
+	/**
+	 * Adds a fold listener.
+	 * @param listener The listener
+	 * @since jEdit 3.1pre1
+	 */
+	public void addFoldListener(FoldListener l)
+	{
+		foldListeners.addElement(l);
+	}
+
+	/**
+	 * Removes a fold listener.
+	 * @param listener The listener
+	 * @since jEdit 3.1pre1
+	 */
+	public void removeFoldListener(FoldListener l)
+	{
+		foldListeners.removeElement(l);
+	}
+
+	/**
+	 * Returns the number of physical lines in the buffer.
+	 * @since jEdit 3.1pre1
+	 */
+	public int getLineCount()
+	{
+		return lineCount;
+	}
+
+	/**
+	 * Returns the number of virtual lines in the buffer.
+	 * @since jEdit 3.1pre1
+	 */
+	public int getVirtualLineCount()
+	{
+		return virtualLineCount;
 	}
 
 	/**
 	 * Returns a vector of markers.
-	 * @since jEdit 2.5pre4
+	 * @since jEdit 3.2pre1
 	 */
 	public final Vector getMarkers()
 	{
@@ -1702,41 +2603,61 @@ public class Buffer extends PlainDocument implements EBComponent
 	}
 
 	/**
-	 * Returns the number of markers in this buffer.
-	 * @since jEdit 2.5pre1
+	 * If a marker is set on the line of the position, it is removed. Otherwise
+	 * a new marker with the specified shortcut is added.
+	 * @param pos The position of the marker
+	 * @param shortcut The shortcut ('\0' if none)
+	 * @since jEdit 3.2pre5
 	 */
-	public final int getMarkerCount()
+	public void addOrRemoveMarker(char shortcut, int pos)
 	{
-		return markers.size();
+		Element map = getDefaultRootElement();
+		int line = map.getElementIndex(pos);
+		if(getMarkerAtLine(line) != null)
+			removeMarker(line);
+		else
+			addMarker(shortcut,pos);
 	}
 
 	/**
 	 * Adds a marker to this buffer.
-	 * @param name The name of the marker
-	 * @param start The start offset of the marker
-	 * @param end The end offset of this marker
+	 * @param pos The position of the marker
+	 * @param shortcut The shortcut ('\0' if none)
+	 * @since jEdit 3.2pre1
 	 */
-	public void addMarker(String name, int start, int end)
+	public void addMarker(char shortcut, int pos)
 	{
-		setDirty(true);
+		if(!getFlag(READ_ONLY) && jEdit.getBooleanProperty("persistentMarkers"))
+			setDirty(true);
 
-		name = name.replace(';',' ');
-		Marker markerN = new Marker(this,name,start,end);
+		Marker markerN = new Marker(this,shortcut,pos);
 		boolean added = false;
+
+		Element map = getDefaultRootElement();
+		int line = map.getElementIndex(pos);
 
 		// don't sort markers while buffer is being loaded
 		if(!getFlag(LOADING))
 		{
-			markerN.createPositions();
+			markerN.createPosition();
 
 			for(int i = 0; i < markers.size(); i++)
 			{
 				Marker marker = (Marker)markers.elementAt(i);
-				if(marker.getName().equals(name))
+				if(shortcut != '\0' && marker.getShortcut() == shortcut)
+					marker.setShortcut('\0');
+
+				if(map.getElementIndex(marker.getPosition()) == line)
 				{
 					markers.removeElementAt(i);
+					i--;
 				}
-				if(marker.getStart() > start)
+			}
+
+			for(int i = 0; i < markers.size(); i++)
+			{
+				Marker marker = (Marker)markers.elementAt(i);
+				if(marker.getPosition() > pos)
 				{
 					markers.insertElementAt(markerN,i);
 					added = true;
@@ -1749,26 +2670,56 @@ public class Buffer extends PlainDocument implements EBComponent
 			markers.addElement(markerN);
 
 		if(!getFlag(LOADING))
-			EditBus.send(new BufferUpdate(this,BufferUpdate.MARKERS_CHANGED));
+		{
+			EditBus.send(new BufferUpdate(this,null,
+				BufferUpdate.MARKERS_CHANGED));
+		}
 	}
 
 	/**
-	 * Removes the marker with the specified name.
-	 * @param name The name of the marker to remove
+	 * Returns the first marker at the specified line.
+	 * @param line The line number
+	 * @since jEdit 3.2pre2
 	 */
-	public void removeMarker(String name)
+	public Marker getMarkerAtLine(int line)
 	{
-		setDirty(true);
+		Element map = getDefaultRootElement();
 
 		for(int i = 0; i < markers.size(); i++)
 		{
 			Marker marker = (Marker)markers.elementAt(i);
-			if(marker.getName().equals(name))
-				markers.removeElementAt(i);
+			if(map.getElementIndex(marker.getPosition()) == line)
+				return marker;
 		}
 
-		if(!getFlag(LOADING))
-			EditBus.send(new BufferUpdate(this,BufferUpdate.MARKERS_CHANGED));
+		return null;
+	}
+
+	/**
+	 * Removes all markers at the specified line.
+	 * @param line The line number
+	 * @since jEdit 3.2pre2
+	 */
+	public void removeMarker(int line)
+	{
+		Element map = getDefaultRootElement();
+
+		for(int i = 0; i < markers.size(); i++)
+		{
+			Marker marker = (Marker)markers.elementAt(i);
+			if(map.getElementIndex(marker.getPosition()) == line)
+			{
+				if(!getFlag(READ_ONLY) && jEdit.getBooleanProperty("persistentMarkers"))
+					setDirty(true);
+
+				marker.removePosition();
+				markers.removeElementAt(i);
+				i--;
+			}
+		}
+
+		EditBus.send(new BufferUpdate(this,null,
+			BufferUpdate.MARKERS_CHANGED));
 	}
 
 	/**
@@ -1777,25 +2728,30 @@ public class Buffer extends PlainDocument implements EBComponent
 	 */
 	public void removeAllMarkers()
 	{
-		setDirty(true);
+		if(!getFlag(READ_ONLY) && jEdit.getBooleanProperty("persistentMarkers"))
+			setDirty(true);
+
+		for(int i = 0; i < markers.size(); i++)
+			((Marker)markers.elementAt(i)).removePosition();
 
 		markers.removeAllElements();
 
-		if(!getFlag(LOADING))
-			EditBus.send(new BufferUpdate(this,BufferUpdate.MARKERS_CHANGED));
+		EditBus.send(new BufferUpdate(this,null,
+			BufferUpdate.MARKERS_CHANGED));
 	}
 
 	/**
-	 * Returns the marker with the specified name.
-	 * @param name The marker name
+	 * Returns the marker with the specified shortcut.
+	 * @param shortcut The shortcut
+	 * @since jEdit 3.2pre2
 	 */
-	public Marker getMarker(String name)
+	public Marker getMarker(char shortcut)
 	{
 		Enumeration enum = markers.elements();
 		while(enum.hasMoreElements())
 		{
 			Marker marker = (Marker)enum.nextElement();
-			if(marker.getName().equals(name))
+			if(marker.getShortcut() == shortcut)
 				return marker;
 		}
 		return null;
@@ -1853,18 +2809,28 @@ public class Buffer extends PlainDocument implements EBComponent
 	Buffer prev;
 	Buffer next;
 
-	Buffer(View view, String path, boolean readOnly,
-		boolean newFile, boolean temp, Hashtable props)
+	Buffer(View view, String path, boolean newFile, boolean temp,
+		Hashtable props)
 	{
+		lineCount = 1;
+		lineInfo = new LineInfo[1];
+		lineInfo[0] = new LineInfo();
+		lineInfo[0].visible = true;
+
+		virtualLineCount = 1;
+		virtualLines = new int[1];
+		foldListeners = new Vector();
+
+		seg = new Segment();
+		lastTokenizedLine = -1;
+
 		setDocumentProperties(new BufferProps());
 		clearProperties();
 
 		setFlag(TEMPORARY,temp);
-		setFlag(READ_ONLY,readOnly);
 
 		markers = new Vector();
 
-		addDocumentListener(new DocumentHandler());
 		addUndoableEditListener(new UndoHandler());
 
 		Enumeration keys = props.keys();
@@ -1924,9 +2890,9 @@ public class Buffer extends PlainDocument implements EBComponent
 	}
 
 	// protected members
-	
+
 	/**
-	 * We overwrite this method to update the token marker
+	 * We overwrite this method to update the line info array
 	 * state immediately so that any event listeners get a
 	 * consistent token marker.
 	 */
@@ -1939,22 +2905,23 @@ public class Buffer extends PlainDocument implements EBComponent
 			int index = ch.getIndex();
 			int len = ch.getChildrenAdded().length -
 				ch.getChildrenRemoved().length;
-			tokenMarker.linesChanged(index,
-				tokenMarker.getLineCount() - index);
-			tokenMarker.insertLines(ch.getIndex() + 1,len);
+			addLinesToMap(ch.getIndex() + 1,len);
+			linesChanged(index,lineCount - index);
 			index += (len + 1);
 		}
 		else
 		{
-			tokenMarker.linesChanged(getDefaultRootElement()
+			linesChanged(getDefaultRootElement()
 				.getElementIndex(evt.getOffset()),1);
 		}
 
 		super.fireInsertUpdate(evt);
+
+		setDirty(true);
 	}
-	
+
 	/**
-	 * We overwrite this method to update the token marker
+	 * We overwrite this method to update the line info array
 	 * state immediately so that any event listeners get a
 	 * consistent token marker.
 	 */
@@ -1967,17 +2934,18 @@ public class Buffer extends PlainDocument implements EBComponent
 			int index = ch.getIndex();
 			int len = ch.getChildrenRemoved().length -
 				ch.getChildrenAdded().length;
-			tokenMarker.linesChanged(index,
-				tokenMarker.getLineCount() - index);
-			tokenMarker.deleteLines(index + 1,len);
+			removeLinesFromMap(index,len);
+			linesChanged(index,lineCount - index);
 		}
 		else
 		{
-			tokenMarker.linesChanged(getDefaultRootElement()
+			linesChanged(getDefaultRootElement()
 				.getElementIndex(evt.getOffset()),1);
 		}
 
 		super.fireRemoveUpdate(evt);
+
+		setDirty(true);
 	}
 
 	// private members
@@ -2003,9 +2971,8 @@ public class Buffer extends PlainDocument implements EBComponent
 	private static final int AUTOSAVE_DIRTY = 5;
 	private static final int DIRTY = 6;
 	private static final int READ_ONLY = 7;
-	private static final int SYNTAX = 8;
-	private static final int UNDO_IN_PROGRESS = 9;
-	private static final int TEMPORARY = 10;
+	private static final int UNDO_IN_PROGRESS = 8;
+	private static final int TEMPORARY = 9;
 
 	private int flags;
 
@@ -2016,9 +2983,8 @@ public class Buffer extends PlainDocument implements EBComponent
 	private String path;
 	private String name;
 	private Mode mode;
-	private TokenMarker tokenMarker;
+
 	private MyUndoManager undo;
-	private UndoableEdit saveUndo;
 	private CompoundEdit compoundEdit;
 	private boolean compoundEditNonEmpty;
 	private int compoundEditCount;
@@ -2026,12 +2992,29 @@ public class Buffer extends PlainDocument implements EBComponent
 	private int savedSelStart;
 	private int savedSelEnd;
 
+	// Syntax highlighting
+	private TokenMarker tokenMarker;
+	private Segment seg;
+	private LineInfo[] lineInfo;
+	private int lineCount;
+	private int lastTokenizedLine;
+	private boolean nextLineRequested;
+
+	// Folding
+	private int[] virtualLines;
+	private int virtualLineCount;
+	private Vector foldListeners;
+
 	private void setPath(String path)
 	{
 		this.path = path;
-		name = MiscUtilities.getFileName(path);
 
 		vfs = VFSManager.getVFSForPath(path);
+		if((vfs.getCapabilities() & VFS.WRITE_CAP) == 0)
+			setReadOnly(true);
+
+		name = vfs.getFileName(path);
+
 		if(vfs instanceof FileVFS)
 		{
 			file = new File(path);
@@ -2046,15 +3029,15 @@ public class Buffer extends PlainDocument implements EBComponent
 
 	private boolean recoverAutosave(final View view)
 	{
+		if(!autosaveFile.canRead())
+			return false;
+
 		// this method might get called at startup
 		GUIUtilities.hideSplashScreen();
 
 		final Object[] args = { autosaveFile.getPath() };
-		int result = JOptionPane.showConfirmDialog(view,
-			jEdit.getProperty("autosave-found.message",args),
-			jEdit.getProperty("autosave-found.title"),
-			JOptionPane.YES_NO_OPTION,
-			JOptionPane.WARNING_MESSAGE);
+		int result = GUIUtilities.confirm(view,"autosave-found",args,
+			JOptionPane.YES_NO_OPTION,JOptionPane.WARNING_MESSAGE);
 
 		if(result == JOptionPane.YES_OPTION)
 		{
@@ -2078,8 +3061,16 @@ public class Buffer extends PlainDocument implements EBComponent
 
 	private void clearProperties()
 	{
+		Object lineSeparator = getProperty(LINESEP);
+		Object encoding = getProperty(ENCODING);
 		((BufferProps)getDocumentProperties()).clear();
 		putProperty("i18n",Boolean.FALSE);
+		if(lineSeparator != null)
+			putProperty(LINESEP,lineSeparator);
+		if(encoding != null)
+			putProperty(ENCODING,encoding);
+		else
+			putProperty(ENCODING,System.getProperty("file.encoding"));
 	}
 
 	private void parseBufferLocalProperties()
@@ -2094,12 +3085,12 @@ public class Buffer extends PlainDocument implements EBComponent
 					line.getEndOffset() - line.getStartOffset() - 1);
 				parseBufferLocalProperty(text);
 			}
-	
+
 			// Create marker positions
 			for(int i = 0; i < markers.size(); i++)
 			{
 				((Marker)markers.elementAt(i))
-					.createPositions();
+					.createPosition();
 			}
 		}
 		catch(BadLocationException bl)
@@ -2174,6 +3165,148 @@ public class Buffer extends PlainDocument implements EBComponent
 		}
 	}
 
+	private void setTokenMarker(TokenMarker tokenMarker)
+	{
+		this.tokenMarker = tokenMarker;
+
+		ParserRuleSet mainSet = tokenMarker.getMainRuleSet();
+		for(int i = 0; i < lineCount; i++)
+		{
+			LineInfo info = lineInfo[i];
+			info.context = new TokenMarker.LineContext(null,mainSet);
+			info.tokensValid = false;
+		}
+	}
+
+	/**
+	 * Inserts the specified line range into the virtual to physical
+	 * mapping and line info array.
+	 * @param index The first line number
+	 * @param lines The number of lines
+	 */
+	private void addLinesToMap(int index, int lines)
+	{
+		//System.err.println("adding " + index + ":" + lines + " to map");
+		if(lines <= 0)
+			return;
+
+		LineInfo prev = lineInfo[index - 1];
+
+		int virtualLine;
+		// special case
+		if(index == lineCount)
+			virtualLine = virtualLineCount;
+		else
+			virtualLine = physicalToVirtual(index);
+
+		int virtualLength;
+
+		/* update the virtual -> physical mapping if the newly
+		 * inserted lines are actually visible */
+		if(prev.visible)
+		{
+			virtualLineCount += lines;
+
+			if(virtualLines.length <= virtualLineCount)
+			{
+				int[] virtualLinesN = new int[
+					(virtualLineCount + 1) * 2];
+				System.arraycopy(virtualLines,0,
+					virtualLinesN,0,
+					virtualLines.length);
+				virtualLines = virtualLinesN;
+			}
+
+			virtualLength = virtualLine + lines;
+
+			System.arraycopy(virtualLines,virtualLine,
+				virtualLines,virtualLength,
+				virtualLines.length - virtualLength);
+
+			for(int i = 0; i < lines; i++)
+				virtualLines[virtualLine + i] = index + i;
+		}
+		else
+			virtualLength = virtualLine /* + 1 */;
+
+		for(int i = virtualLength; i < virtualLineCount; i++)
+			virtualLines[i] += lines;
+
+		lineCount += lines;
+
+		if(lineInfo.length <= lineCount)
+		{
+			LineInfo[] lineInfoN = new LineInfo[(lineCount + 1) * 2];
+			System.arraycopy(lineInfo,0,lineInfoN,0,
+					 lineInfo.length);
+			lineInfo = lineInfoN;
+		}
+
+		int length = index + lines;
+		System.arraycopy(lineInfo,index,lineInfo,length,
+			lineInfo.length - length);
+
+		ParserRuleSet mainSet = tokenMarker.getMainRuleSet();
+		for(int i = 0; i < lines; i++)
+		{
+			LineInfo info = new LineInfo();
+			info.context = new TokenMarker.LineContext(null,mainSet);
+			info.visible = prev.visible;
+			lineInfo[index + i] = info;
+		}
+	}
+
+	/**
+	 * Deletes the specified line range from the virtual to physical
+	 * mapping and line info array.
+	 * @param index The first line number
+	 * @param lines The number of lines
+	 */
+	private void removeLinesFromMap(int index, int lines)
+	{
+		if (lines <= 0)
+			return;
+
+		int length = index + lines;
+		int virtualLine = physicalToVirtual(index);
+		int virtualLength = physicalToVirtual(length);
+
+		if(length <= virtualLines[virtualLineCount - 1])
+		{
+			System.arraycopy(virtualLines,virtualLength,
+				virtualLines,virtualLine,
+				virtualLines.length - virtualLength);
+
+			for(int i = virtualLine;
+				i < virtualLineCount
+				- (virtualLength - virtualLine);
+				i++)
+				virtualLines[i] -= lines;
+		}
+
+		virtualLineCount -= (virtualLength - virtualLine);
+
+		lineCount -= lines;
+		System.arraycopy(lineInfo,length,lineInfo,
+			index,lineInfo.length - length);
+	}
+
+	/**
+	 * Called when the specified lines change. This invalidates
+	 * cached syntax tokens and fold level.
+	 * @param index The first line number
+	 * @param lines The number of lines
+	 */
+	private void linesChanged(int index, int lines)
+	{
+		for(int i = 0; i < lines; i++)
+		{
+			LineInfo info = lineInfo[index + i];
+			info.tokensValid = false;
+			info.foldLevelValid = false;
+		}
+	}
+
 	static class PrintTabExpander implements TabExpander
 	{
 		private int leftMargin;
@@ -2190,6 +3323,111 @@ public class Buffer extends PlainDocument implements EBComponent
 			int ntabs = ((int)x - leftMargin) / tabSize;
 			return (ntabs + 1) * tabSize + leftMargin;
 		}
+	}
+
+	private void fireFoldLevelsChanged(int firstLine, int lastLine)
+	{
+		for(int i = 0; i < foldListeners.size(); i++)
+		{
+			((FoldListener)foldListeners.elementAt(i))
+				.foldLevelsChanged(firstLine,lastLine);
+		}
+	}
+
+	private void fireFoldStructureChanged()
+	{
+		for(int i = 0; i < foldListeners.size(); i++)
+		{
+			((FoldListener)foldListeners.elementAt(i))
+				.foldStructureChanged();
+		}
+	}
+
+	/**
+	 * Only useful for the text area.
+	 */
+	public static interface FoldListener
+	{
+		void foldLevelsChanged(int firstLine, int lastLine);
+
+		void foldStructureChanged();
+	}
+
+	/**
+	 * Inner class for storing information about tokenized lines.
+	 */
+	public static class LineInfo
+	{
+		/**
+		 * Do not use this variable. The only reason it is public
+		 * is so that classes in the 'syntax' package can use it.
+		 */
+		public TokenMarker.LineContext context;
+
+		/**
+		 * Returns the first syntax token.
+		 * @since jEdit 3.1pre1
+		 */
+		public Token getFirstToken()
+		{
+			return firstToken;
+		}
+
+		/**
+		 * Returns the last syntax token.
+		 * @since jEdit 3.1pre1
+		 */
+		public Token getLastToken()
+		{
+			return lastToken;
+		}
+
+		/**
+		 * Do not call this method. The only reason it is public
+		 * is so that classes in the 'syntax' package can call it.
+		 */
+		public void addToken(int length, byte id)
+		{
+			if(length == 0 && id != Token.END)
+				return;
+
+			if(firstToken == null)
+			{
+				firstToken = new Token(length,id);
+				lastToken = firstToken;
+			}
+			else if(lastToken == null)
+			{
+				lastToken = firstToken;
+				firstToken.length = length;
+				firstToken.id = id;
+			}
+			else if(lastToken.id == id)
+			{
+				lastToken.length += length;
+			}
+			else if(lastToken.next == null)
+			{
+				lastToken.next = new Token(length,id);
+				lastToken.next.prev = lastToken;
+				lastToken = lastToken.next;
+			}
+			else
+			{
+				lastToken = lastToken.next;
+				lastToken.length = length;
+				lastToken.id = id;
+			}
+		}
+
+		// package-private members
+		Token firstToken;
+		Token lastToken;
+		boolean tokensValid;
+		int width;
+		int foldLevel;
+		boolean foldLevelValid;
+		boolean visible;
 	}
 
 	// A dictionary that looks in the mode and editor properties
@@ -2217,7 +3455,7 @@ public class Buffer extends PlainDocument implements EBComponent
 				String value = jEdit.getProperty("buffer." + key);
 				if(value == null)
 					return null;
-	
+
 				// Try returning it as an integer first
 				try
 				{
@@ -2246,68 +3484,6 @@ public class Buffer extends PlainDocument implements EBComponent
 		}
 	}
 
-	class SaveUndo implements UndoableEdit
-	{
-		boolean dead;
-
-		public void undo()
-		{
-			//System.err.println("dirty false");
-			//if(!dead)
-			//	setDirty(false);
-		}
-
-		public boolean canUndo()
-		{
-			return true;
-		}
-
-		public void redo()
-		{
-			undo();
-		}
-
-		public boolean canRedo()
-		{
-			return true;
-		}
-
-		public boolean isSignificant()
-		{
-			return false;
-		}
-
-		public void die()
-		{
-			dead = true;
-		}
-
-		public boolean addEdit(UndoableEdit edit)
-		{
-			return false;
-		}
-
-		public boolean replaceEdit(UndoableEdit edit)
-		{
-			return false;
-		}
-
-		public String getPresentationName()
-		{
-			return null;
-		}
-
-		public String getUndoPresentationName()
-		{
-			return null;
-		}
-
-		public String getRedoPresentationName()
-		{
-			return null;
-		}
-	}
-
 	// event handlers
 	class UndoHandler
 	implements UndoableEditListener
@@ -2315,24 +3491,6 @@ public class Buffer extends PlainDocument implements EBComponent
 		public void undoableEditHappened(UndoableEditEvent evt)
 		{
 			addUndoableEdit(evt.getEdit());
-		}
-	}
-
-	class DocumentHandler
-	implements DocumentListener
-	{
-		public void insertUpdate(DocumentEvent evt)
-		{
-			setDirty(true);
-		}
-
-		public void removeUpdate(DocumentEvent evt)
-		{
-			setDirty(true);
-		}
-
-		public void changedUpdate(DocumentEvent evt)
-		{
 		}
 	}
 }

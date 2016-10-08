@@ -1,6 +1,6 @@
 /*
  * InputHandler.java - Manages key bindings and executes actions
- * Copyright (C) 1999 Slava Pestov
+ * Copyright (C) 1999, 2000, 2001 Slava Pestov
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -19,6 +19,7 @@
 
 package org.gjt.sp.jedit.gui;
 
+import javax.swing.JOptionPane;
 import javax.swing.JPopupMenu;
 import java.awt.event.*;
 import java.awt.Component;
@@ -36,7 +37,7 @@ import org.gjt.sp.util.Log;
  * to the implementations of this class to do so.
  *
  * @author Slava Pestov
- * @version $Id: InputHandler.java,v 1.23 2000/12/08 04:03:43 sp Exp $
+ * @version $Id: InputHandler.java,v 1.1.1.1 2001/09/02 05:37:40 spestov Exp $
  * @see org.gjt.sp.jedit.gui.DefaultInputHandler
  */
 public abstract class InputHandler extends KeyAdapter
@@ -96,6 +97,7 @@ public abstract class InputHandler extends KeyAdapter
 	{
 		this.repeat = repeat;
 		repeatCount = 0;
+		view.getStatus().setMessage(null);
 	}
 
 	/**
@@ -114,6 +116,7 @@ public abstract class InputHandler extends KeyAdapter
 	{
 		repeat = true;
 		this.repeatCount = repeatCount;
+		view.getStatus().setMessage(null);
 	}
 
 	/**
@@ -137,8 +140,18 @@ public abstract class InputHandler extends KeyAdapter
 	/**
 	 * Invokes the specified BeanShell code, replacing __char__ in the
 	 * code with the next input character.
+	 * @param msg The prompt to display in the status bar
 	 * @param code The code
-	 * @since jEdit 2.7pre2
+	 * @since jEdit 3.2pre2
+	 */
+	public void readNextChar(String msg, String code)
+	{
+		view.getStatus().setMessage(msg);
+		readNextChar(code);
+	}
+
+	/**
+	 * @deprecated Use the other form of this method instead
 	 */
 	public void readNextChar(String code)
 	{
@@ -153,6 +166,10 @@ public abstract class InputHandler extends KeyAdapter
 	 */
 	public void invokeAction(EditAction action)
 	{
+		Buffer buffer = view.getBuffer();
+
+		buffer.endCompoundEdit();
+
 		// remember the last executed action
 		if(lastAction == action)
 			lastActionCount++;
@@ -171,12 +188,33 @@ public abstract class InputHandler extends KeyAdapter
 			action.invoke(view);
 		else
 		{
-			Buffer buffer = view.getBuffer();
+			// stop people doing dumb stuff like C+ENTER 100 C+n
+			if(_repeatCount > REPEAT_COUNT_THRESHOLD)
+			{
+				String label = jEdit.getProperty(action.getName() + ".label");
+				if(label == null)
+					label = action.getName();
+				else
+					label = GUIUtilities.prettifyMenuLabel(label);
+
+				Object[] pp = { label, new Integer(_repeatCount) };
+					
+				if(GUIUtilities.confirm(view,"large-repeat-count",pp,
+					JOptionPane.WARNING_MESSAGE,
+					JOptionPane.YES_NO_OPTION)
+					!= JOptionPane.YES_OPTION)
+				{
+					repeat = false;
+					repeatCount = 0;
+					view.getStatus().setMessage(null);
+					return;
+				}
+			}
 
 			try
 			{
 				buffer.beginCompoundEdit();
-	
+
 				for(int i = 0; i < _repeatCount; i++)
 					action.invoke(view);
 			}
@@ -195,17 +233,20 @@ public abstract class InputHandler extends KeyAdapter
 		// Otherwise it might have been set by the action, etc
 		if(_repeat)
 		{
-			// first of all, if this action set a readNextChar,
-			// do not clear the repeat
+			// first of all, if this action set a
+			// readNextChar, do not clear the repeat
 			if(readNextChar != null)
 				return;
 
 			repeat = false;
 			repeatCount = 0;
+			view.getStatus().setMessage(null);
 		}
 	}
 
 	// protected members
+	private static final int REPEAT_COUNT_THRESHOLD = 20;
+
 	protected View view;
 	protected boolean repeat;
 	protected int repeatCount;
@@ -223,22 +264,37 @@ public abstract class InputHandler extends KeyAdapter
 			invokeReadNextChar(ch);
 		else
 		{
+			Buffer buffer = view.getBuffer();
+			if(!buffer.insideCompoundEdit())
+				buffer.beginCompoundEdit();
+
 			JEditTextArea textArea = view.getTextArea();
 			int _repeatCount = getRepeatCount();
 			if(_repeatCount == 1)
 				textArea.userInput(ch);
 			else
 			{
-				try
+				// stop people doing dumb stuff like C+ENTER 100 C+n
+				if(_repeatCount > REPEAT_COUNT_THRESHOLD)
 				{
-					view.getBuffer().beginCompoundEdit();
-					for(int i = 0; i < _repeatCount; i++)
-						textArea.userInput(ch);
+					Object[] pp = { String.valueOf(ch),
+						new Integer(_repeatCount) };
+
+					if(GUIUtilities.confirm(view,
+						"large-repeat-count.user-input",pp,
+						JOptionPane.WARNING_MESSAGE,
+						JOptionPane.YES_NO_OPTION)
+						!= JOptionPane.YES_OPTION)
+					{
+						repeat = false;
+						repeatCount = 0;
+						view.getStatus().setMessage(null);
+						return;
+					}
 				}
-				finally
-				{
-					view.getBuffer().endCompoundEdit();
-				}
+
+				for(int i = 0; i < _repeatCount; i++)
+					textArea.userInput(ch);
 			}
 
 			Macros.Recorder recorder = view.getMacroRecorder();
@@ -254,8 +310,9 @@ public abstract class InputHandler extends KeyAdapter
 	{
 		String charStr = MiscUtilities.charsToEscapes(String.valueOf(ch));
 
-		int index = readNextChar.indexOf("__char__");
-		if(index != -1)
+		// this might be a bit slow if __char__ occurs a lot
+		int index;
+		while((index = readNextChar.indexOf("__char__")) != -1)
 		{
 			readNextChar = readNextChar.substring(0,index)
 				+ '\'' + charStr + '\''
@@ -264,19 +321,19 @@ public abstract class InputHandler extends KeyAdapter
 
 		Macros.Recorder recorder = view.getMacroRecorder();
 		if(recorder != null)
-			recorder.record(repeatCount,readNextChar);
+			recorder.record(getRepeatCount(),readNextChar);
 
-		if(repeat && repeatCount != 1)
+		if(getRepeatCount() != 1)
 		{
 			Buffer buffer = view.getBuffer();
 
 			try
 			{
 				buffer.beginCompoundEdit();
-	
-				BeanShell.eval(view,"for(int i = 1; i < " + repeatCount
-					+ "; i++)\n{\n" + readNextChar + "\n}",
-					false);
+
+				BeanShell.eval(view,"for(int i = 1; i < "
+					+ getRepeatCount() + "; i++)\n{\n"
+					+ readNextChar + "\n}",false);
 			}
 			finally
 			{
@@ -287,5 +344,7 @@ public abstract class InputHandler extends KeyAdapter
 			BeanShell.eval(view,readNextChar,false);
 
 		readNextChar = null;
+
+		view.getStatus().setMessage(null);
 	}
 }

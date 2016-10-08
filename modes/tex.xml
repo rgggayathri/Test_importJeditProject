@@ -2,10 +2,9 @@
 
 <!DOCTYPE MODE SYSTEM "xmode.dtd">
 
-<MODE NAME="tex">
+<MODE>
 	<PROPS>
-		<PROPERTY NAME="filenameGlob" VALUE="*.{tex,sty,ltx}" />
-		<PROPERTY NAME="blockComment" VALUE="%" />
+		<PROPERTY NAME="lineComment" VALUE="%" />
 	</PROPS>
 	<RULES>
 		<WHITESPACE> </WHITESPACE>

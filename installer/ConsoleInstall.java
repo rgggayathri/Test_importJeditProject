@@ -72,10 +72,20 @@ public class ConsoleInstall
 		{
 			String fileset = installer.getProperty("comp." + i + ".fileset");
 
+			String osDep = installer.getProperty("comp." + i + ".os");
+			if(osDep != null)
+			{
+				if(!OperatingSystem.getOperatingSystem()
+					.getClass().getName().endsWith(osDep))
+				{
+					continue;
+				}
+			}
+
 			System.out.print("Install "
 				+ installer.getProperty("comp." + i + ".name")
 				+ " ("
-				+ installer.getProperty("comp." + i + ".size")
+				+ installer.getProperty("comp." + i + ".disk-size")
 				+ "Kb) [Y/n]? ");
 
 			String line = readLine(in);

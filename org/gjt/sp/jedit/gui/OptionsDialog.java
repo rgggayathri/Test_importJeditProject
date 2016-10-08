@@ -34,7 +34,7 @@ import org.gjt.sp.util.Log;
 /**
  * An abstract tabbed options dialog box.
  * @author Slava Pestov
- * @version $Id: OptionsDialog.java,v 1.35 2000/12/06 07:00:40 sp Exp $
+ * @version $Id: OptionsDialog.java,v 1.1.1.1 2001/09/02 05:37:44 spestov Exp $
  */
 public class OptionsDialog extends EnhancedDialog
 	implements ActionListener, TreeSelectionListener
@@ -263,8 +263,7 @@ public class OptionsDialog extends EnhancedDialog
 		addOptionPane(new GutterOptionPane(), jEditGroup);
 		addOptionPane(new ColorOptionPane(), jEditGroup);
 		addOptionPane(new StyleOptionPane(), jEditGroup);
-		addOptionPane(new CommandShortcutsOptionPane(), jEditGroup);
-		addOptionPane(new MacroShortcutsOptionPane(), jEditGroup);
+		addOptionPane(new ShortcutsOptionPane(), jEditGroup);
 		addOptionPane(new DockingOptionPane(), jEditGroup);
 		addOptionPane(new ContextOptionPane(), jEditGroup);
 		addOptionPane(new ToolBarOptionPane(), jEditGroup);
@@ -358,8 +357,10 @@ public class OptionsDialog extends EnhancedDialog
 			}
 			else
 			{
-				this.setBackground(tree.getBackground());
-				this.setForeground(tree.getForeground());
+				this.setBackground(UIManager.getColor(
+					"Tree.background"));
+				this.setForeground(UIManager.getColor(
+					"Tree.foreground"));
 			}
 
 			String name = null;
@@ -394,7 +395,7 @@ public class OptionsDialog extends EnhancedDialog
 				}
 			}
 
-			setBorder(hasFocus ? focusBorder : noFocusBorder);
+			setIcon(null);
 
 			return this;
 		}

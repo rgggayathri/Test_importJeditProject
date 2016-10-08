@@ -22,6 +22,7 @@ package org.gjt.sp.jedit.options;
 
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.*;
+import javax.swing.plaf.metal.MetalLookAndFeel;
 import javax.swing.table.*;
 import javax.swing.*;
 import java.awt.event.*;
@@ -34,7 +35,7 @@ import org.gjt.sp.jedit.*;
 /**
  * Color option pane.
  * @author Slava Pestov
- * @version $Id: ColorOptionPane.java,v 1.1 2000/11/07 10:08:32 sp Exp $
+ * @version $Id: ColorOptionPane.java,v 1.1.1.1 2001/09/02 05:37:54 spestov Exp $
  */
 public class ColorOptionPane extends AbstractOptionPane
 {
@@ -109,7 +110,7 @@ class ColorTableModel extends AbstractTableModel
 
 	ColorTableModel()
 	{
-		colorChoices = new Vector(17);
+		colorChoices = new Vector(16);
 		addColorChoice("options.color.bgColor","view.bgColor");
 		addColorChoice("options.color.fgColor","view.fgColor");
 		addColorChoice("options.color.caretColor","view.caretColor");
@@ -133,14 +134,17 @@ class ColorTableModel extends AbstractTableModel
 			"view.gutter.currentLineColor");
 		addColorChoice("options.color.gutterMarkerColor",
 			"view.gutter.markerColor");
-		addColorChoice("options.color.gutterRegisterColor",
-			"view.gutter.registerColor");
+		addColorChoice("options.color.gutterFoldColor",
+			"view.gutter.foldColor");
 		addColorChoice("options.color.gutterFocusBorderColor",
 			"view.gutter.focusBorderColor");
 		addColorChoice("options.color.gutterNoFocusBorderColor",
 			"view.gutter.noFocusBorderColor");
-		addColorChoice("options.color.dockingBorderColor",
-			"view.docking.borderColor");
+		if(!(UIManager.getLookAndFeel() instanceof MetalLookAndFeel))
+		{
+			addColorChoice("options.color.dockingBorderColor",
+				"view.docking.borderColor");
+		}
 	}
 
 	public int getColumnCount()
@@ -227,7 +231,7 @@ class ColorTableModel extends AbstractTableModel
 			setOpaque(true);
 			setBorder(StyleOptionPane.noFocusBorder);
 		}
-	
+
 		// TableCellRenderer implementation
 		public Component getTableCellRendererComponent(
 			JTable table,
@@ -247,10 +251,10 @@ class ColorTableModel extends AbstractTableModel
 				setBackground(table.getBackground());
 				setForeground(table.getForeground());
 			}
-	
+
 			if (value != null)
 				setBackground((Color)value);
-	
+
 			setBorder((cellHasFocus) ? UIManager.getBorder(
 				"Table.focusCellHighlightBorder")
 				: StyleOptionPane.noFocusBorder);
@@ -259,11 +263,3 @@ class ColorTableModel extends AbstractTableModel
 		// end TableCellRenderer implementation
 	}
 }
-
-/*
- * Change Log:
- * $Log: ColorOptionPane.java,v $
- * Revision 1.1  2000/11/07 10:08:32  sp
- * Options dialog improvements, documentation changes, bug fixes
- *
- */

@@ -29,7 +29,7 @@ import org.gjt.sp.util.WorkThread;
 /**
  * A browser I/O request.
  * @author Slava Pestov
- * @version $Id: BrowserIORequest.java,v 1.5 2000/11/11 02:59:30 sp Exp $
+ * @version $Id: BrowserIORequest.java,v 1.1.1.1 2001/09/02 05:38:17 spestov Exp $
  */
 public class BrowserIORequest extends WorkRequest
 {
@@ -130,22 +130,19 @@ public class BrowserIORequest extends WorkRequest
 	private void listDirectory()
 	{
 		VFS.DirectoryEntry[] directory = null;
+		String[] args = { path1 };
+		setStatus(jEdit.getProperty("vfs.status.listing-directory",args));
 
 		try
 		{
 			setAbortable(true);
-			String[] args = { path1 };
-			setStatus(jEdit.getProperty("vfs.status.listing-directory",args));
-
-			try
-			{
-				directory = vfs._listDirectory(session,path1,browser);
-			}
-			catch(IOException io)
-			{
-				args[0] = io.getMessage();
-				VFSManager.error(browser,"ioerror",args);
-			}
+			directory = vfs._listDirectory(session,path1,browser);
+		}
+		catch(IOException io)
+		{
+			setAbortable(false);
+			String[] pp = { path1, io.toString() };
+			VFSManager.error(browser,"directory-error",pp);
 		}
 		catch(WorkThread.Abort a)
 		{
@@ -158,8 +155,9 @@ public class BrowserIORequest extends WorkRequest
 			}
 			catch(IOException io)
 			{
-				String[] args = { io.getMessage() };
-				VFSManager.error(browser,"ioerror",args);
+				setAbortable(false);
+				String[] pp = { path1, io.toString() };
+				VFSManager.error(browser,"directory-error",pp);
 			}
 		}
 
@@ -182,8 +180,8 @@ public class BrowserIORequest extends WorkRequest
 			}
 			catch(IOException io)
 			{
-				args[0] = io.getMessage();
-				VFSManager.error(browser,"ioerror",args);
+				String[] pp = { path1, io.toString() };
+				VFSManager.error(browser,"directory-error",pp);
 			}
 		}
 		catch(WorkThread.Abort a)
@@ -197,8 +195,8 @@ public class BrowserIORequest extends WorkRequest
 			}
 			catch(IOException io)
 			{
-				String[] args = { io.getMessage() };
-				VFSManager.error(browser,"ioerror",args);
+				String[] pp = { path1, io.toString() };
+				VFSManager.error(browser,"directory-error",pp);
 			}
 		}
 	}
@@ -227,8 +225,8 @@ public class BrowserIORequest extends WorkRequest
 			}
 			catch(IOException io)
 			{
-				args[0] = io.getMessage();
-				VFSManager.error(browser,"ioerror",args);
+				String[] pp = { path1, io.toString() };
+				VFSManager.error(browser,"directory-error",pp);
 			}
 		}
 		catch(WorkThread.Abort a)
@@ -242,8 +240,8 @@ public class BrowserIORequest extends WorkRequest
 			}
 			catch(IOException io)
 			{
-				String[] args = { io.getMessage() };
-				VFSManager.error(browser,"ioerror",args);
+				String[] pp = { path1, io.toString() };
+				VFSManager.error(browser,"directory-error",pp);
 			}
 		}
 	}
@@ -263,7 +261,7 @@ public class BrowserIORequest extends WorkRequest
 			}
 			catch(IOException io)
 			{
-				args[0] = io.getMessage();
+				args[0] = io.toString();
 				VFSManager.error(browser,"ioerror",args);
 			}
 		}
@@ -278,29 +276,9 @@ public class BrowserIORequest extends WorkRequest
 			}
 			catch(IOException io)
 			{
-				String[] args = { io.getMessage() };
+				String[] args = { io.toString() };
 				VFSManager.error(browser,"ioerror",args);
 			}
 		}
 	}
 }
-
-/*
- * Change Log:
- * $Log: BrowserIORequest.java,v $
- * Revision 1.5  2000/11/11 02:59:30  sp
- * FTP support moved out of the core into a plugin
- *
- * Revision 1.4  2000/09/23 03:01:10  sp
- * pre7 yayayay
- *
- * Revision 1.3  2000/08/06 09:44:27  sp
- * VFS browser now has a tree view, rename command
- *
- * Revision 1.2  2000/08/05 07:16:12  sp
- * Global options dialog box updated, VFS browser now supports right-click menus
- *
- * Revision 1.1  2000/07/29 12:24:08  sp
- * More VFS work, VFS browser started
- *
- */

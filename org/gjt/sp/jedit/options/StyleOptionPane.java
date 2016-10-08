@@ -34,7 +34,7 @@ import org.gjt.sp.jedit.*;
 /**
  * Style option pane.
  * @author Slava Pestov
- * @version $Id: StyleOptionPane.java,v 1.26 2001/01/22 05:35:08 sp Exp $
+ * @version $Id: StyleOptionPane.java,v 1.2 2001/09/08 04:50:46 spestov Exp $
  */
 public class StyleOptionPane extends AbstractOptionPane
 {
@@ -185,7 +185,8 @@ class StyleTableModel extends AbstractTableModel
 	{
 		styleChoices.addElement(new StyleChoice(jEdit.getProperty(label),
 			property,
-			GUIUtilities.parseStyle(jEdit.getProperty(property))));
+			GUIUtilities.parseStyle(jEdit.getProperty(property),
+			"Dialog",12)));
 	}
 
 	static class StyleChoice
@@ -205,14 +206,11 @@ class StyleTableModel extends AbstractTableModel
 	static class StyleRenderer extends JLabel
 		implements TableCellRenderer
 	{
-		Font originalFont;
-
 		public StyleRenderer()
 		{
 			setOpaque(true);
 			setBorder(StyleOptionPane.noFocusBorder);
 			setText("Hello World");
-			originalFont = getFont();
 		}
 	
 		// TableCellRenderer implementation
@@ -236,8 +234,7 @@ class StyleTableModel extends AbstractTableModel
 					setBackground(GUIUtilities.parseColor(
 						jEdit.getProperty("view.bgColor")));
 				}
-				setFont(style.getStyledFont(originalFont));
-				System.err.println(style + ":" + getFont());
+				setFont(style.getFont());
 			}
 
 			setBorder((cellHasFocus) ? UIManager.getBorder(
@@ -265,11 +262,11 @@ class StyleEditor extends EnhancedDialog implements ActionListener
 		panel.setBorder(new EmptyBorder(0,0,12,0));
 		panel.add(italics = new JCheckBox(
 			jEdit.getProperty("style-editor.italics")));
-		italics.setSelected(style.isItalic());
+		italics.setSelected(style.getFont().isItalic());
 		panel.add(Box.createHorizontalStrut(2));
 		panel.add(bold = new JCheckBox(
 			jEdit.getProperty("style-editor.bold")));
-		bold.setSelected(style.isBold());
+		bold.setSelected(style.getFont().isBold());
 		panel.add(Box.createHorizontalStrut(12));
 		panel.add(new JLabel(jEdit.getProperty("style-editor.fgColor")));
 		panel.add(Box.createHorizontalStrut(12));
@@ -345,19 +342,16 @@ class StyleEditor extends EnhancedDialog implements ActionListener
 		if(!okClicked)
 			return null;
 
-		if (bgColor.getBackground().equals(GUIUtilities.parseColor(jEdit.getProperty("view.bgColor"))))
-		{
-			return new SyntaxStyle(fgColor.getBackground(),null,
-					italics.isSelected(),
-					bold.isSelected());
-		}
-		else
-		{
-			return new SyntaxStyle(fgColor.getBackground(),
-					bgColor.getBackground(),
-					italics.isSelected(),
-					bold.isSelected());
-		}
+		Color background = bgColor.getBackground();
+
+		if (background.equals(GUIUtilities.parseColor(jEdit.getProperty("view.bgColor"))))
+			background = null;
+
+		return new SyntaxStyle(fgColor.getBackground(),background,
+				new Font("Dialog",
+				(italics.isSelected() ? Font.ITALIC : 0)
+				| (bold.isSelected() ? Font.BOLD : 0),
+				12));
 	}
 
 	// private members
@@ -369,44 +363,3 @@ class StyleEditor extends EnhancedDialog implements ActionListener
 	private JButton cancel;
 	private boolean okClicked;
 }
-
-/*
- * Change Log:
- * $Log: StyleOptionPane.java,v $
- * Revision 1.26  2001/01/22 05:35:08  sp
- * bug fixes galore
- *
- * Revision 1.25  2000/11/07 10:08:32  sp
- * Options dialog improvements, documentation changes, bug fixes
- *
- * Revision 1.24  2000/11/05 05:25:46  sp
- * Word wrap, format and remove-trailing-ws commands from TextTools moved into core
- *
- * Revision 1.23  2000/10/30 07:14:04  sp
- * 2.7pre1 branched, GUI improvements
- *
- * Revision 1.22  2000/10/12 09:28:27  sp
- * debugging and polish
- *
- * Revision 1.21  2000/08/10 08:30:41  sp
- * VFS browser work, options dialog work, more random tweaks
- *
- * Revision 1.20  2000/08/05 07:16:12  sp
- * Global options dialog box updated, VFS browser now supports right-click menus
- *
- * Revision 1.19  2000/07/14 06:00:45  sp
- * bracket matching now takes syntax info into account
- *
- * Revision 1.18  2000/07/12 09:11:38  sp
- * macros can be added to context menu and tool bar, menu bar layout improved
- *
- * Revision 1.17  2000/06/03 07:28:26  sp
- * User interface updates, bug fixes
- *
- * Revision 1.16  2000/05/22 12:05:45  sp
- * Markers are highlighted in the gutter, bug fixes
- *
- * Revision 1.15  2000/05/21 03:00:51  sp
- * Code cleanups and bug fixes
- *
- */

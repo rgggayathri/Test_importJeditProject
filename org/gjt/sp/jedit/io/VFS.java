@@ -27,7 +27,7 @@ import org.gjt.sp.jedit.*;
  * A virtual filesystem implementation. Note tha methods whose names are
  * prefixed with "_" are called from the I/O thread.
  * @param author Slava Pestov
- * @author $Id: VFS.java,v 1.22 2000/11/11 02:59:31 sp Exp $
+ * @author $Id: VFS.java,v 1.2 2001/09/08 04:50:46 spestov Exp $
  */
 public abstract class VFS
 {
@@ -44,7 +44,10 @@ public abstract class VFS
 	public static final int WRITE_CAP = 1 << 1;
 
 	/**
-	 * VFS browser capability.
+	 * If set, a menu item for this VFS will appear in the browser's
+	 * 'More' menu. If not set, it will still be possible to type in
+	 * URLs in this VFS in the browser, but there won't be a user-visible
+	 * way of doing this.
 	 * @since jEdit 2.6pre2
 	 */
 	public static final int BROWSE_CAP = 1 << 2;
@@ -106,6 +109,18 @@ public abstract class VFS
 	}
 
 	/**
+	 * Returns the file name component of the specified path. The
+	 * default implementation calls
+	 * <code>MiscUtilities.getFileName()</code>
+	 * @param path The path
+	 * @since jEdit 3.1pre4
+	 */
+	public String getFileName(String path)
+	{
+		return MiscUtilities.getFileName(path);
+	}
+
+	/**
 	 * Returns the parent of the specified path. This must be
 	 * overridden to return a non-null value for browsing of this
 	 * filesystem to work.
@@ -146,8 +161,7 @@ public abstract class VFS
 	 * a login name and password, for example.
 	 * @param path The path in question
 	 * @param comp The component that will parent error dialog boxes
-	 * @return True if everything is okay, false if the user cancelled
-	 * the operation
+	 * @return The session
 	 * @since jEdit 2.6pre3
 	 */
 	public Object createVFSSession(String path, Component comp)
@@ -203,6 +217,14 @@ public abstract class VFS
 		Object session = createVFSSession(path,view);
 		if(session == null)
 			return false;
+
+		/* When doing a 'save as', the path to save to (path)
+		 * will not be the same as the buffer's previous path
+		 * (buffer.getPath()). In that case, we want to create
+		 * a backup of the new path, even if the old path was
+		 * backed up as well (BACKED_UP property set) */
+		if(!path.equals(buffer.getPath()))
+			buffer.getDocumentProperties().remove(Buffer.BACKED_UP);
 
 		VFSManager.runInWorkThread(new BufferIORequest(
 			BufferIORequest.SAVE,view,buffer,session,this,path));
@@ -266,7 +288,6 @@ public abstract class VFS
 		Component comp)
 		throws IOException
 	{
-		VFSManager.error(comp,"vfs.not-supported.list",new String[] { name });
 		return null;
 	}
 
@@ -350,6 +371,20 @@ public abstract class VFS
 	}
 
 	/**
+	 * Backs up the specified file. This should only be overriden by
+	 * the local filesystem VFS.
+	 * @param session The VFS session
+	 * @param path The path
+	 * @param comp The component that will parent error dialog boxes
+	 * @exception IOException if an I/O error occurs
+	 * @since jEdit 3.2pre2
+	 */
+	public void _backup(Object session, String path, Component comp)
+		throws IOException
+	{
+	}
+
+	/**
 	 * Creates an input stream. This method is called from the I/O
 	 * thread.
 	 * @param session the VFS session
@@ -386,6 +421,17 @@ public abstract class VFS
 	}
 
 	/**
+	 * Called after a file has been saved.
+	 * @param session The VFS session
+	 * @param buffer The buffer
+	 * @param comp The component that will parent error dialog boxes
+	 * @exception IOException If an I/O error occurs
+	 * @since jEdit 3.1pre1
+	 */
+	public void _saveComplete(Object session, Buffer buffer, Component comp)
+		throws IOException {}
+
+	/**
 	 * Finishes the specified VFS session. This must be called
 	 * after all I/O with this VFS is complete, to avoid leaving
 	 * stale network connections and such.
@@ -402,41 +448,3 @@ public abstract class VFS
 	// private members
 	private String name;
 }
-
-/*
- * Change Log:
- * $Log: VFS.java,v $
- * Revision 1.22  2000/11/11 02:59:31  sp
- * FTP support moved out of the core into a plugin
- *
- * Revision 1.21  2000/11/05 00:44:14  sp
- * Improved HyperSearch, improved horizontal scroll, other stuff
- *
- * Revision 1.20  2000/11/02 09:19:33  sp
- * more features
- *
- * Revision 1.19  2000/10/15 04:10:35  sp
- * bug fixes
- *
- * Revision 1.18  2000/08/29 07:47:13  sp
- * Improved complete word, type-select in VFS browser, bug fixes
- *
- * Revision 1.17  2000/08/23 09:51:48  sp
- * Documentation updates, abbrev updates, bug fixes
- *
- * Revision 1.16  2000/08/16 12:14:29  sp
- * Passwords are now saved, bug fixes, documentation updates
- *
- * Revision 1.15  2000/08/10 11:55:58  sp
- * VFS browser toolbar improved a little bit, font selector tweaks
- *
- * Revision 1.14  2000/08/06 09:44:27  sp
- * VFS browser now has a tree view, rename command
- *
- * Revision 1.13  2000/08/05 07:16:12  sp
- * Global options dialog box updated, VFS browser now supports right-click menus
- *
- * Revision 1.12  2000/08/03 07:43:42  sp
- * Favorites added to browser, lots of other stuff too
- *
- */

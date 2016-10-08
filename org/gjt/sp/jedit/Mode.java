@@ -33,7 +33,7 @@ import org.gjt.sp.util.Log;
  * subclassing is required.
  *
  * @author Slava Pestov
- * @version $Id: Mode.java,v 1.34 2000/12/24 02:54:47 sp Exp $
+ * @version $Id: Mode.java,v 1.1.1.1 2001/09/02 05:37:24 spestov Exp $
  */
 public class Mode
 {
@@ -81,15 +81,6 @@ public class Mode
 	}
 
 	/**
-	 * Returns a copy of the token marker specified with
-	 * <code>setTokenMarker()</code>.
-	 */
-	public TokenMarker createTokenMarker()
-	{
-		return (TokenMarker)getTokenMarker().clone();
-	}
-
-	/**
 	 * Returns the token marker specified with
 	 * <code>setTokenMarker()</code>. Should only be called by
 	 * <code>TokenMarker.getExternalRuleSet()</code>.
@@ -117,7 +108,7 @@ public class Mode
 	public void loadIfNecessary()
 	{
 		if(marker == null)
-			jEdit.loadMode((String)getProperty("grammar"));
+			jEdit.loadMode(this);
 	}
 
 	/**
@@ -194,16 +185,25 @@ public class Mode
 	}
 
 	/**
+	 * Unsets a mode property.
+	 * @param key The property name
+	 * @since jEdit 3.2pre3
+	 */
+	public void unsetProperty(String key)
+	{
+		props.remove(key);
+	}
+
+	/**
 	 * Returns if the edit mode is suitable for editing the specified
 	 * file. The buffer name and first line is checked against the
 	 * file name and first line globs, respectively.
-	 * @param buffer The buffer
 	 * @param fileName The buffer's name
 	 * @param firstLine The first line of the buffer
 	 *
-	 * @since jEdit 2.2pre1
+	 * @since jEdit 3.2pre3
 	 */
-	public boolean accept(Buffer buffer, String fileName, String firstLine)
+	public boolean accept(String fileName, String firstLine)
 	{
 		if(filenameRE != null && filenameRE.isMatch(fileName))
 			return true;

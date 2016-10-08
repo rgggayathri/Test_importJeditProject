@@ -28,11 +28,11 @@ import org.gjt.sp.jedit.io.VFSManager;
 import org.gjt.sp.jedit.*;
 import org.gjt.sp.util.*;
 
-public class IOProgressMonitor extends JFrame
+public class IOProgressMonitor extends JDialog
 {
-	public IOProgressMonitor()
+	public IOProgressMonitor(View view)
 	{
-		super(jEdit.getProperty("io-progress-monitor.title"));
+		super(view,jEdit.getProperty("io-progress-monitor.title"),false);
 
 		JPanel content = new JPanel(new BorderLayout());
 		content.setBorder(new EmptyBorder(12,12,12,12));
@@ -147,10 +147,8 @@ public class IOProgressMonitor extends JFrame
 			{
 				if(evt.getSource() == abort)
 				{
-					int result = JOptionPane.showConfirmDialog(
-						IOProgressMonitor.this,
-						jEdit.getProperty("abort.message"),
-						jEdit.getProperty("abort.title"),
+					int result = GUIUtilities.confirm(
+						IOProgressMonitor.this,"abort",null,
 						JOptionPane.YES_NO_OPTION,
 						JOptionPane.QUESTION_MESSAGE);
 					if(result == JOptionPane.YES_OPTION)

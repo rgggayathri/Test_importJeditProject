@@ -1,6 +1,6 @@
 /*
  * HyperSearchResults.java - HyperSearch results
- * Copyright (C) 1998, 1999, 2000 Slava Pestov
+ * Copyright (C) 1998, 1999, 2000, 2001 Slava Pestov
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -39,7 +39,7 @@ import org.gjt.sp.util.Log;
 /**
  * HyperSearch results window.
  * @author Slava Pestov
- * @version $Id: HyperSearchResults.java,v 1.1 2000/12/01 07:39:59 sp Exp $
+ * @version $Id: HyperSearchResults.java,v 1.1.1.1 2001/09/02 05:38:00 spestov Exp $
  */
 public class HyperSearchResults extends JPanel implements DockableWindow,
 	EBComponent
@@ -51,6 +51,10 @@ public class HyperSearchResults extends JPanel implements DockableWindow,
 		super(new BorderLayout());
 
 		this.view = view;
+
+		caption = new JLabel();
+		updateCaption(0,0);
+		add(BorderLayout.NORTH, caption);
 
 		resultTreeRoot = new DefaultMutableTreeNode();
 		resultTreeModel = new DefaultTreeModel(resultTreeRoot);
@@ -145,14 +149,15 @@ public class HyperSearchResults extends JPanel implements DockableWindow,
 
 	public void searchStarted()
 	{
+		caption.setText(jEdit.getProperty("hypersearch-results.searching"));
 		resultTreeRoot.removeAllChildren();
 		resultTreeModel.reload(resultTreeRoot);
 	}
 
-	public void searchDone()
+	public void searchDone(int resultCount, int bufferCount)
 	{
-		// need to invokeLater() because the thread calls
-		// VFSManager.runInAWTThread() to add search results
+		updateCaption(resultCount,bufferCount);
+
 		SwingUtilities.invokeLater(new Runnable()
 		{
 			public void run()
@@ -171,9 +176,16 @@ public class HyperSearchResults extends JPanel implements DockableWindow,
 	// private members
 	private View view;
 
+	private JLabel caption;
 	private JTree resultTree;
 	private DefaultMutableTreeNode resultTreeRoot;
 	private DefaultTreeModel resultTreeModel;
+
+	private void updateCaption(int resultCount, int bufferCount)
+	{
+		Object[] pp = { new Integer(resultCount), new Integer(bufferCount) };
+		caption.setText(jEdit.getProperty("hypersearch-results.caption",pp));
+	}
 
 	class MouseHandler extends MouseAdapter
 	{
@@ -220,30 +232,20 @@ public class HyperSearchResults extends JPanel implements DockableWindow,
 		}
 	}
 
+
 	class ResultCellRenderer extends DefaultTreeCellRenderer
 	{
 		public Component getTreeCellRendererComponent(JTree tree,
 			Object value, boolean sel, boolean expanded,
 			boolean leaf, int row, boolean hasFocus)
 		{
-			super.getTreeCellRendererComponent(tree,value,sel,
+			Component comp = super.getTreeCellRendererComponent(tree,value,sel,
 				expanded,leaf,row,hasFocus);
-
-			setIcon(null);
-			Font font = UIManager.getFont("Label.font");
-			if(value instanceof String)
-			{
-				font = new Font(font.getFamily(),Font.BOLD,
-					font.getSize());
-			}
-			else
-			{
-				font = new Font(font.getFamily(),Font.PLAIN,
-					font.getSize());
-			}
-			ResultCellRenderer.this.setFont(font);
-
-			return this;
+			if (!(comp instanceof JLabel))
+				return comp;
+			JLabel label = (JLabel)comp;
+			label.setIcon(null);
+			return label;
 		}
 	}
 }

@@ -2,6 +2,8 @@
  * BoyerMooreSearchMatcher.java - Literal pattern String matcher utilizing the
  *         Boyer-Moore algorithm
  * Copyright (C) 1999, 2000 mike dillon
+ * Portions copyright (C) 2001 Tom Locke
+ * Portions copyright (C) 2001 Slava Pestov
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -20,20 +22,19 @@
 
 package org.gjt.sp.jedit.search;
 
+import bsh.NameSpace;
 import javax.swing.text.Segment;
+import org.gjt.sp.jedit.BeanShell;
 import org.gjt.sp.util.Log;
 
 public class BoyerMooreSearchMatcher implements SearchMatcher
 {
 	/**
 	 * Creates a new string literal matcher.
-	 * @param pattern The search string
-	 * @param replace The replacement string
-	 * @param ignoreCase True if the matcher should be case insensitive,
-	 * false otherwise
 	 */
 	public BoyerMooreSearchMatcher(String pattern, String replace,
-		boolean ignoreCase)
+		boolean ignoreCase, boolean reverseSearch,
+		boolean beanshell, String replaceMethod)
 	{
 		if (ignoreCase)
 		{
@@ -43,8 +44,28 @@ public class BoyerMooreSearchMatcher implements SearchMatcher
 		{
 			this.pattern = pattern.toCharArray();
 		}
+
+		if (reverseSearch)
+		{
+			char[] tmp = new char[this.pattern.length];
+			for (int i = 0; i < tmp.length; i++)
+			{
+				tmp[i] = this.pattern[this.pattern.length - (i + 1)];
+			}
+			this.pattern = tmp;
+		}
+
 		this.replace = replace;
 		this.ignoreCase = ignoreCase;
+		this.reverseSearch = reverseSearch;
+		this.beanshell = beanshell;
+
+		if(beanshell)
+		{
+			this.replaceMethod = replaceMethod;
+			replaceNS = new NameSpace(BeanShell.getNameSpace(),
+				"search and replace");
+		}
 
 		generateSkipArray();
 		generateSuffixArray();
@@ -78,45 +99,20 @@ public class BoyerMooreSearchMatcher implements SearchMatcher
 	 * within this matcher performed.
 	 * @param text The text
 	 */
-	public String substitute(String text)
+	public String substitute(String text) throws Exception
 	{
-		StringBuffer buf = null;
-
-		int pos, lastMatch = 0;
-		int length = text.length();
-
-		char[] chars = text.toCharArray();
-
-		while ((pos = match(chars, lastMatch, length)) != -1)
+		if(beanshell)
 		{
-			if (buf == null)
-			{
-				buf = new StringBuffer(length);
-			}
-
-			if (pos != lastMatch)
-			{
-				buf.append(chars, lastMatch, pos - lastMatch);
-			}
-
-			buf.append(replace);
-
-			lastMatch = pos + pattern.length;
-		}
-
-		if(buf == null)
-		{
-			return null;
+			replaceNS.setVariable("_0",text);
+			Object obj = BeanShell.runCachedBlock(replaceMethod,
+				null,replaceNS);
+			if(obj == null)
+				return null;
+			else
+				return obj.toString();
 		}
 		else
-		{
-			if(lastMatch < chars.length)
-			{
-				buf.append(chars, lastMatch,length - lastMatch);
-			}
-
-			return buf.toString();
-		}
+			return replace;
 	}
 
 	/*
@@ -129,7 +125,7 @@ public class BoyerMooreSearchMatcher implements SearchMatcher
 	public int match(char[] text, int offset, int length)
 	{
 		// position variable for pattern start
-		int anchor = offset;
+		int anchor = reverseSearch ? length - 1 : offset;
 
 		// position variable for pattern test position
 		int pos;
@@ -137,7 +133,9 @@ public class BoyerMooreSearchMatcher implements SearchMatcher
 		// last possible start position of a match with this pattern;
 		// this is negative if the pattern is longer than the text
 		// causing the search loop below to immediately fail
-		int last_anchor = length - pattern.length;
+		int last_anchor = reverseSearch
+			? offset + pattern.length - 1
+			: length - pattern.length;
 
 		// each time the pattern is checked, we start this many
 		// characters ahead of 'anchor'
@@ -159,13 +157,14 @@ public class BoyerMooreSearchMatcher implements SearchMatcher
 		// pattern to determine the furthest we can move the anchor
 		// without missing any potential pattern matches.
 SEARCH:
-		while (anchor <= last_anchor)
+		while (reverseSearch ? anchor >= last_anchor : anchor <= last_anchor)
 		{
 			for (pos = pattern_end; pos >= 0; --pos)
 			{
+				int idx = reverseSearch ? anchor - pos : anchor + pos;
 				ch = ignoreCase
-					? Character.toUpperCase(text[anchor + pos])
-					: text[anchor + pos];
+					? Character.toUpperCase(text[idx])
+					: text[idx];
 
 				// pattern test
 				if (ch != pattern[pos])
@@ -180,7 +179,8 @@ SEARCH:
 
 					// skip the greater of the two distances provided by the
 					// heuristics
-					anchor += (bad_char > good_suffix) ? bad_char : good_suffix;
+					int skip = (bad_char > good_suffix) ? bad_char : good_suffix;
+					anchor += reverseSearch ? -skip : skip;
 
 					// go back to the while loop
 					continue SEARCH;
@@ -188,7 +188,7 @@ SEARCH:
 			}
 
 			// MATCH: return the position of its first character
-			return anchor;
+			return (reverseSearch ? anchor - pattern_end : anchor);
 		}
 
 		// MISMATCH: return -1 as defined by API
@@ -199,6 +199,10 @@ SEARCH:
 	private char[] pattern;
 	private String replace;
 	private boolean ignoreCase;
+	private boolean reverseSearch;
+	private boolean beanshell;
+	private String replaceMethod;
+	private NameSpace replaceNS;
 
 	// Boyer-Moore member fields
 	private int[] skip;

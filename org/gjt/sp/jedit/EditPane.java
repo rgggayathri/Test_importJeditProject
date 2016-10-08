@@ -1,6 +1,6 @@
 /*
- * EditPane.java - Text area and buffer
- * Copyright (C) 2000 Slava Pestov
+ * EditPane.java - Text area and buffer switcher
+ * Copyright (C) 2000, 2001 Slava Pestov
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -33,7 +33,7 @@ import org.gjt.sp.util.Log;
  * A panel containing a text area. Each edit pane can edit one buffer at
  * a time.
  * @author Slava Pestov
- * @version $Id: EditPane.java,v 1.29 2000/12/08 04:03:42 sp Exp $
+ * @version $Id: EditPane.java,v 1.1.1.1 2001/09/02 05:37:29 spestov Exp $
  */
 public class EditPane extends JPanel implements EBComponent
 {
@@ -68,6 +68,8 @@ public class EditPane extends JPanel implements EBComponent
 		if(buffer.isClosed())
 			throw new InternalError(buffer + " has been closed");
 
+		buffer.endCompoundEdit();
+
 		recentBuffer = this.buffer;
 		if(recentBuffer != null)
 			saveCaretInfo();
@@ -78,14 +80,12 @@ public class EditPane extends JPanel implements EBComponent
 		if(!init)
 		{
 			view.updateTitle();
-			view.updateMarkerMenus();
 
 			if(bufferSwitcher != null)
 			{
 				if(bufferSwitcher.getSelectedItem() != buffer)
 					bufferSwitcher.setSelectedItem(buffer);
 			}
-			caretStatus.repaint();
 
 			EditBus.send(new EditPaneUpdate(this,EditPaneUpdate
 				.BUFFER_CHANGED));
@@ -190,18 +190,45 @@ public class EditPane extends JPanel implements EBComponent
 	 */
 	public void saveCaretInfo()
 	{
-		buffer.putProperty(Buffer.SELECTION_START,new Integer(
-			textArea.getSelectionStart()));
-		buffer.putProperty(Buffer.SELECTION_END,new Integer(
-			textArea.getSelectionEnd()));
-		buffer.putProperty(Buffer.SELECTION_RECT,new Boolean(
-			textArea.isSelectionRectangular()));
+		buffer.putProperty(Buffer.CARET,new Integer(
+			textArea.getCaretPosition()));
+
+		Selection[] selection = textArea.getSelection();
+		if(selection != null)
+			buffer.putProperty(Buffer.SELECTION,selection);
+
 		buffer.putProperty(Buffer.SCROLL_VERT,new Integer(
 			textArea.getFirstLine()));
 		buffer.putProperty(Buffer.SCROLL_HORIZ,new Integer(
 			textArea.getHorizontalOffset()));
-		buffer.putProperty(Buffer.OVERWRITE,new Boolean(
-			textArea.isOverwriteEnabled()));
+	}
+
+	/**
+	 * Loads the caret information from the curret buffer.
+	 * @since jEdit 2.5pre2
+	 */
+	public void loadCaretInfo()
+	{
+		Integer caret = (Integer)buffer.getProperty(Buffer.CARET);
+		Selection[] selection = (Selection[])buffer.getProperty(Buffer.SELECTION);
+
+		Integer firstLine = (Integer)buffer.getProperty(Buffer.SCROLL_VERT);
+		Integer horizontalOffset = (Integer)buffer.getProperty(Buffer.SCROLL_HORIZ);
+
+		if(caret != null)
+		{
+			textArea.setCaretPosition(Math.min(caret.intValue(),
+				buffer.getLength()));
+		}
+
+		if(selection != null)
+			textArea.setSelection(selection);
+
+		if(firstLine != null)
+			textArea.setFirstLine(firstLine.intValue());
+
+		if(horizontalOffset != null)
+			textArea.setHorizontalOffset(horizontalOffset.intValue());
 	}
 
 	public void handleMessage(EBMessage msg)
@@ -211,44 +238,8 @@ public class EditPane extends JPanel implements EBComponent
 			propertiesChanged();
 			loadBufferSwitcher();
 		}
-		else if(msg instanceof RegistersChanged)
-			textArea.getGutter().repaint();
 		else if(msg instanceof BufferUpdate)
 			handleBufferUpdate((BufferUpdate)msg);
-	}
-
-	/**
-	 * Loads the caret information from the curret buffer.
-	 * @since jEdit 2.5pre2
-	 */
-	public void loadCaretInfo()
-	{
-		Integer start = (Integer)buffer.getProperty(Buffer.SELECTION_START);
-		Integer end = (Integer)buffer.getProperty(Buffer.SELECTION_END);
-		Boolean rectSel = (Boolean)buffer.getProperty(Buffer.SELECTION_RECT);
-		Integer firstLine = (Integer)buffer.getProperty(Buffer.SCROLL_VERT);
-		Integer horizontalOffset = (Integer)buffer.getProperty(Buffer.SCROLL_HORIZ);
-		Boolean overwrite = (Boolean)buffer.getProperty(Buffer.OVERWRITE);
-
-		if(start != null && end != null)
-		{
-			textArea.select(Math.min(start.intValue(),
-				buffer.getLength()),
-				Math.min(end.intValue(),
-				buffer.getLength()));
-		}
-
-		if(firstLine != null && horizontalOffset != null)
-		{
-			textArea.setFirstLine(firstLine.intValue());
-			textArea.setHorizontalOffset(horizontalOffset.intValue());
-		}
-
-		if(rectSel != null && overwrite != null)
-		{
-			textArea.setSelectionRectangular(rectSel.booleanValue());
-			textArea.setOverwriteEnabled(overwrite.booleanValue());
-		}
 	}
 
 	/**
@@ -260,7 +251,7 @@ public class EditPane extends JPanel implements EBComponent
 	}
 
 	// package-private members
-	EditPane(View view, EditPane editPane, Buffer buffer)
+	EditPane(View view, Buffer buffer)
 	{
 		super(new BorderLayout());
 
@@ -271,27 +262,15 @@ public class EditPane extends JPanel implements EBComponent
 		EditBus.addToBus(this);
 
 		textArea = new JEditTextArea(view);
-		textArea.add(JEditTextArea.LEFT_OF_SCROLLBAR,caretStatus
-			= new CaretStatus(this));
-		textArea.addCaretListener(new CaretHandler());
+
 		add(BorderLayout.CENTER,textArea);
 		markerHighlight = new MarkerHighlight();
 		textArea.getGutter().addCustomHighlight(markerHighlight);
-		textArea.getGutter().setContextMenu(GUIUtilities
-			.loadPopupMenu("view.gutter.context"));
 
-		if(editPane != null)
-			initTextArea(editPane.textArea);
-		else
-			propertiesChanged();
+		propertiesChanged();
 
 		if(buffer == null)
-		{
-			if(editPane != null)
-				setBuffer(editPane.getBuffer());
-			else
-				setBuffer(jEdit.getFirstBuffer());
-		}
+			setBuffer(jEdit.getFirstBuffer());
 		else
 			setBuffer(buffer);
 
@@ -313,7 +292,6 @@ public class EditPane extends JPanel implements EBComponent
 	private Buffer buffer;
 	private Buffer recentBuffer;
 	private BufferSwitcher bufferSwitcher;
-	private CaretStatus caretStatus;
 	private JEditTextArea textArea;
 	private MarkerHighlight markerHighlight;
 
@@ -321,30 +299,7 @@ public class EditPane extends JPanel implements EBComponent
 	{
 		TextAreaPainter painter = textArea.getPainter();
 
-		String family = jEdit.getProperty("view.font");
-		int size;
-		try
-		{
-			size = Integer.parseInt(jEdit.getProperty(
-				"view.fontsize"));
-		}
-		catch(NumberFormatException nf)
-		{
-			size = 14;
-		}
-		int style;
-		try
-		{
-			style = Integer.parseInt(jEdit.getProperty(
-				"view.fontstyle"));
-		}
-		catch(NumberFormatException nf)
-		{
-			style = Font.PLAIN;
-		}
-		Font font = new Font(family,style,size);
-
-		painter.setFont(font);
+		painter.setFont(UIManager.getFont("TextArea.font"));
 		painter.setBracketHighlightEnabled(jEdit.getBooleanProperty(
 			"view.bracketHighlight"));
 		painter.setBracketHighlightColor(GUIUtilities.parseColor(
@@ -371,21 +326,15 @@ public class EditPane extends JPanel implements EBComponent
 			"view.lineHighlight"));
 		painter.setLineHighlightColor(GUIUtilities.parseColor(
 			jEdit.getProperty("view.lineHighlightColor")));
+		painter.setAntiAliasEnabled(jEdit.getBooleanProperty(
+			"view.antiAlias"));
+		painter.setFractionalFontMetricsEnabled(jEdit.getBooleanProperty(
+			"view.fracFontMetrics"));
+		painter.setStyles(GUIUtilities.loadStyles(jEdit.getProperty("view.font"),
+			Integer.parseInt(jEdit.getProperty("view.fontsize"))));
 
 		Gutter gutter = textArea.getGutter();
-		try
-		{
-			int width = Integer.parseInt(jEdit.getProperty(
-				"view.gutter.width"));
-			gutter.setGutterWidth(width);
-		}
-		catch(NumberFormatException nf)
-		{
-			// retain the default gutter width
-		}
-		gutter.setCollapsed(jEdit.getBooleanProperty(
-			"view.gutter.collapsed"));
-		gutter.setLineNumberingEnabled(jEdit.getBooleanProperty(
+		gutter.setExpanded(jEdit.getBooleanProperty(
 			"view.gutter.lineNumbers"));
 		try
 		{
@@ -405,10 +354,12 @@ public class EditPane extends JPanel implements EBComponent
 			jEdit.getProperty("view.gutter.fgColor")));
 		gutter.setHighlightedForeground(GUIUtilities.parseColor(
 			jEdit.getProperty("view.gutter.highlightColor")));
+		gutter.setFoldColor(GUIUtilities.parseColor(
+			jEdit.getProperty("view.gutter.foldColor")));
 		markerHighlight.setMarkerHighlightColor(GUIUtilities.parseColor(
 			jEdit.getProperty("view.gutter.markerColor")));
-		markerHighlight.setRegisterHighlightColor(GUIUtilities.parseColor(
-			jEdit.getProperty("view.gutter.registerColor")));
+		markerHighlight.setHighlightEnabled(jEdit.getBooleanProperty(
+			"view.gutter.markerHighlight"));
 		gutter.setCurrentLineForeground(GUIUtilities.parseColor(
 			jEdit.getProperty("view.gutter.currentLineColor")));
 		String alignment = jEdit.getProperty(
@@ -425,6 +376,21 @@ public class EditPane extends JPanel implements EBComponent
 		{
 			gutter.setLineNumberAlignment(Gutter.LEFT);
 		}
+
+		try
+		{
+			String fontname = jEdit.getProperty("view.gutter.font");
+			int fontsize = Integer.parseInt(jEdit.getProperty(
+				"view.gutter.fontsize"));
+			int fontstyle = Integer.parseInt(jEdit.getProperty(
+				"view.gutter.fontstyle"));
+			gutter.setFont(new Font(fontname,fontstyle,fontsize));
+		}
+		catch(NumberFormatException nf)
+		{
+			// retain the default font
+		}
+
 		try
 		{
 			int width = Integer.parseInt(jEdit.getProperty(
@@ -438,19 +404,6 @@ public class EditPane extends JPanel implements EBComponent
 		catch(NumberFormatException nf)
 		{
 			// retain the default border
-		}
-		try
-		{
-			String fontname = jEdit.getProperty("view.gutter.font");
-			int fontsize = Integer.parseInt(jEdit.getProperty(
-				"view.gutter.fontsize"));
-			int fontstyle = Integer.parseInt(jEdit.getProperty(
-				"view.gutter.fontstyle"));
-			gutter.setFont(new Font(fontname,fontstyle,fontsize));
-		}
-		catch(NumberFormatException nf)
-		{
-			// retain the default font
 		}
 
 		textArea.setCaretBlinkEnabled(jEdit.getBooleanProperty(
@@ -466,112 +419,12 @@ public class EditPane extends JPanel implements EBComponent
 			textArea.setElectricScroll(0);
 		}
 
-		loadStyles();
-
 		// Set up the right-click popup menu
 		textArea.setRightClickPopup(GUIUtilities
 			.loadPopupMenu("view.context"));
-	}
 
-	private void loadStyles()
-	{
-		try
-		{
-			SyntaxStyle[] styles = new SyntaxStyle[Token.ID_COUNT];
-
-			styles[Token.COMMENT1] = GUIUtilities.parseStyle(
-				jEdit.getProperty("view.style.comment1"));
-			styles[Token.COMMENT2] = GUIUtilities.parseStyle(
-				jEdit.getProperty("view.style.comment2"));
-			styles[Token.LITERAL1] = GUIUtilities.parseStyle(
-				jEdit.getProperty("view.style.literal1"));
-			styles[Token.LITERAL2] = GUIUtilities.parseStyle(
-				jEdit.getProperty("view.style.literal2"));
-			styles[Token.LABEL] = GUIUtilities.parseStyle(
-				jEdit.getProperty("view.style.label"));
-			styles[Token.KEYWORD1] = GUIUtilities.parseStyle(
-				jEdit.getProperty("view.style.keyword1"));
-			styles[Token.KEYWORD2] = GUIUtilities.parseStyle(
-				jEdit.getProperty("view.style.keyword2"));
-			styles[Token.KEYWORD3] = GUIUtilities.parseStyle(
-				jEdit.getProperty("view.style.keyword3"));
-			styles[Token.FUNCTION] = GUIUtilities.parseStyle(
-				jEdit.getProperty("view.style.function"));
-			styles[Token.MARKUP] = GUIUtilities.parseStyle(
-				jEdit.getProperty("view.style.markup"));
-			styles[Token.OPERATOR] = GUIUtilities.parseStyle(
-				jEdit.getProperty("view.style.operator"));
-			styles[Token.DIGIT] = GUIUtilities.parseStyle(
-				jEdit.getProperty("view.style.digit"));
-			styles[Token.INVALID] = GUIUtilities.parseStyle(
-				jEdit.getProperty("view.style.invalid"));
-
-			textArea.getPainter().setStyles(styles);
-		}
-		catch(Exception e)
-		{
-			Log.log(Log.ERROR,this,e);
-		}
-	}
-
-	private void initTextArea(JEditTextArea copy)
-	{
-		TextAreaPainter painter = copy.getPainter();
-		TextAreaPainter myPainter = textArea.getPainter();
-		myPainter.setFont(painter.getFont());
-		myPainter.setBracketHighlightEnabled(painter.isBracketHighlightEnabled());
-		myPainter.setBracketHighlightColor(painter.getBracketHighlightColor());
-		myPainter.setEOLMarkersPainted(painter.getEOLMarkersPainted());
-		myPainter.setEOLMarkerColor(painter.getEOLMarkerColor());
-		myPainter.setWrapGuidePainted(painter.getWrapGuidePainted());
-		myPainter.setWrapGuideColor(painter.getWrapGuideColor());
-		myPainter.setCaretColor(painter.getCaretColor());
-		myPainter.setSelectionColor(painter.getSelectionColor());
-		myPainter.setBackground(painter.getBackground());
-		myPainter.setForeground(painter.getForeground());
-		myPainter.setBlockCaretEnabled(painter.isBlockCaretEnabled());
-		myPainter.setLineHighlightEnabled(painter.isLineHighlightEnabled());
-		myPainter.setLineHighlightColor(painter.getLineHighlightColor());
-		myPainter.setStyles(painter.getStyles());
-
-		Gutter myGutter = textArea.getGutter();
-		Gutter gutter = copy.getGutter();
-		myGutter.setGutterWidth(gutter.getGutterWidth());
-		myGutter.setCollapsed(gutter.isCollapsed());
-		myGutter.setLineNumberingEnabled(gutter.isLineNumberingEnabled());
-		myGutter.setHighlightInterval(gutter.getHighlightInterval());
-		myGutter.setCurrentLineHighlightEnabled(gutter.isCurrentLineHighlightEnabled());
-		myGutter.setLineNumberAlignment(gutter.getLineNumberAlignment());
-		myGutter.setFont(gutter.getFont());
-
-		try
-		{
-			int width = Integer.parseInt(jEdit.getProperty(
-				"view.gutter.borderWidth"));
-			myGutter.setBorder(width, GUIUtilities.parseColor(
-				jEdit.getProperty("view.gutter.focusBorderColor")),
-				GUIUtilities.parseColor(jEdit.getProperty(
-				"view.gutter.noFocusBorderColor")),
-				gutter.getBackground());
-		}
-		catch(NumberFormatException nf)
-		{
-			// retain the default border
-		}
-
-		myGutter.setBackground(gutter.getBackground());
-		myGutter.setForeground(gutter.getForeground());
-		myGutter.setHighlightedForeground(gutter.getHighlightedForeground());
-		myGutter.setCurrentLineForeground(gutter.getCurrentLineForeground());
-
-		textArea.setCaretBlinkEnabled(copy.isCaretBlinkEnabled());
-		textArea.setElectricScroll(copy.getElectricScroll());
-
-		myPainter.setStyles(painter.getStyles());
-
-		// Set up the right-click popup menu
-		textArea.setRightClickPopup(GUIUtilities
-			.loadPopupMenu("view.context"));
+		textArea.setMiddleMousePasteEnabled(jEdit.getBooleanProperty(
+			"view.middleMousePaste"));
 	}
 
 	private void loadBufferSwitcher()
@@ -632,7 +485,6 @@ public class EditPane extends JPanel implements EBComponent
 		{
 			if(_buffer == buffer)
 			{
-				caretStatus.repaint();
 				textArea.setCaretPosition(0);
 				textArea.getPainter().repaint();
 			}
@@ -641,7 +493,6 @@ public class EditPane extends JPanel implements EBComponent
 		{
 			if(_buffer == buffer)
 			{
-				caretStatus.repaint();
 				if(bufferSwitcher != null)
 				{
 					if(buffer.isDirty())
@@ -656,10 +507,21 @@ public class EditPane extends JPanel implements EBComponent
 			if(_buffer == buffer)
 			{
 				textArea.repaint();
+				textArea.updateScrollBars();
 				if(bufferSwitcher != null)
 					bufferSwitcher.updateBufferList();
-				caretStatus.repaint();
+
+				if(view.getEditPane() == this)
+				{
+					StatusBar status = view.getStatus();
+					status.repaintCaretStatus();
+					status.updateBufferStatus();
+					status.updateMiscStatus();
+				}
+
+				loadCaretInfo();
 			}
+
 		}
 		else if(msg.getWhat() == BufferUpdate.MARKERS_CHANGED)
 		{
@@ -671,61 +533,18 @@ public class EditPane extends JPanel implements EBComponent
 			if(_buffer == buffer)
 			{
 				textArea.getPainter().repaint();
-				if(bufferSwitcher != null)
-					bufferSwitcher.repaint();
+
+				if(view.getEditPane() == this)
+					view.getStatus().updateBufferStatus();
+			}
+		}
+		else if(msg.getWhat() == BufferUpdate.ENCODING_CHANGED)
+		{
+			if(_buffer == buffer)
+			{
+				if(view.getEditPane() == this)
+					view.getStatus().updateBufferStatus();
 			}
 		}
 	}
-
-	class CaretHandler implements CaretListener
-	{
-		public void caretUpdate(CaretEvent evt)
-		{
-			caretStatus.repaint();
-		}
-	}
 }
-
-/*
- * Change Log:
- * $Log: EditPane.java,v $
- * Revision 1.29  2000/12/08 04:03:42  sp
- * bug fixes
- *
- * Revision 1.28  2000/12/01 07:39:58  sp
- * Batch search renamed to HyperSearch, bug fixes
- *
- * Revision 1.27  2000/11/13 11:19:26  sp
- * Search bar reintroduced, more BeanShell stuff
- *
- * Revision 1.26  2000/11/12 05:36:48  sp
- * BeanShell integration started
- *
- * Revision 1.25  2000/11/11 02:59:29  sp
- * FTP support moved out of the core into a plugin
- *
- * Revision 1.24  2000/11/08 09:31:36  sp
- * Junk
- *
- * Revision 1.23  2000/11/07 10:08:31  sp
- * Options dialog improvements, documentation changes, bug fixes
- *
- * Revision 1.22  2000/11/05 05:25:45  sp
- * Word wrap, format and remove-trailing-ws commands from TextTools moved into core
- *
- * Revision 1.21  2000/11/05 00:44:14  sp
- * Improved HyperSearch, improved horizontal scroll, other stuff
- *
- * Revision 1.20  2000/11/02 09:19:31  sp
- * more features
- *
- * Revision 1.19  2000/10/30 07:14:03  sp
- * 2.7pre1 branched, GUI improvements
- *
- * Revision 1.18  2000/09/26 10:19:45  sp
- * Bug fixes, spit and polish
- *
- * Revision 1.17  2000/09/23 03:01:09  sp
- * pre7 yayayay
- *
- */

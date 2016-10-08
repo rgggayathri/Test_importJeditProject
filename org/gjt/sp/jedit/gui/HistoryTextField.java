@@ -1,6 +1,6 @@
 /*
  * HistoryTextField.java - Text field with a history
- * Copyright (C) 1999, 2000 Slava Pestov
+ * Copyright (C) 1999, 2000, 2001 Slava Pestov
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -20,16 +20,29 @@
 package org.gjt.sp.jedit.gui;
 
 import javax.swing.*;
+import javax.swing.border.Border;
+import javax.swing.border.AbstractBorder;
+import javax.swing.border.CompoundBorder;
 import java.awt.*;
 import java.awt.event.*;
+import org.gjt.sp.jedit.*;
 
 /**
  * Text field with an arrow-key accessable history.
  * @author Slava Pestov
- * @version $Id: HistoryTextField.java,v 1.37 2000/11/13 11:19:27 sp Exp $
+ * @version $Id: HistoryTextField.java,v 1.1.1.1 2001/09/02 05:37:45 spestov Exp $
  */
 public class HistoryTextField extends JTextField
 {
+	/**
+	 * Creates a new history text field.
+	 * @since jEdit 3.2pre5
+	 */
+	public HistoryTextField()
+	{
+		this(null);
+	}
+
 	/**
 	 * Creates a new history text field.
 	 * @param name The history model name
@@ -67,9 +80,12 @@ public class HistoryTextField extends JTextField
 	public HistoryTextField(String name, boolean instantPopups,
 		boolean enterAddsToHistory)
 	{
+		setBorder(new CompoundBorder(getBorder(),new HistoryBorder()));
+
 		if(name != null)
 			historyModel = HistoryModel.getModel(name);
-		addMouseListener(new MouseHandler());
+
+		addMouseMotionListener(new MouseHandler());
 
 		this.instantPopups = instantPopups;
 		this.enterAddsToHistory = enterAddsToHistory;
@@ -130,6 +146,9 @@ public class HistoryTextField extends JTextField
 	// protected members
 	protected void processKeyEvent(KeyEvent evt)
 	{
+		if(!isEnabled())
+			return;
+
 		evt = KeyEventWorkaround.processKeyEvent(evt);
 		if(evt == null)
 			return;
@@ -140,12 +159,16 @@ public class HistoryTextField extends JTextField
 			{
 				if(enterAddsToHistory)
 					addCurrentToHistory();
-				fireActionPerformed();
-				evt.consume();
+
+				if(evt.getModifiers() == 0)
+				{
+					fireActionPerformed();
+					evt.consume();
+				}
 			}
-			if(evt.getKeyCode() == KeyEvent.VK_UP)
+			else if(evt.getKeyCode() == KeyEvent.VK_UP)
 			{
-				if((evt.getModifiers() & InputEvent.CTRL_MASK) != 0)
+				if(evt.isShiftDown())
 					doBackwardSearch();
 				else
 					historyPrevious();
@@ -153,14 +176,14 @@ public class HistoryTextField extends JTextField
 			}
 			else if(evt.getKeyCode() == KeyEvent.VK_DOWN)
 			{
-				if((evt.getModifiers() & InputEvent.CTRL_MASK) != 0)
+				if(evt.isShiftDown())
 					doForwardSearch();
 				else
 					historyNext();
 				evt.consume();
 			}
 			else if(evt.getKeyCode() == KeyEvent.VK_TAB
-				&& (evt.getModifiers() & InputEvent.CTRL_MASK) != 0)
+				&& evt.isControlDown())
 			{
 				doBackwardSearch();
 				evt.consume();
@@ -169,6 +192,40 @@ public class HistoryTextField extends JTextField
 
 		if(!evt.isConsumed())
 			super.processKeyEvent(evt);
+	}
+
+	protected void processMouseEvent(MouseEvent evt)
+	{
+		if(!isEnabled())
+			return;
+
+		switch(evt.getID())
+		{
+		case MouseEvent.MOUSE_PRESSED:
+			Border border = getBorder();
+			Insets insets = border.getBorderInsets(HistoryTextField.this);
+
+			if(evt.getX() >= getWidth() - insets.right
+				|| GUIUtilities.isPopupTrigger(evt))
+			{
+				if(evt.isShiftDown())
+					showPopupMenu(getText().substring(0,
+						getSelectionStart()),0,getHeight());
+				else
+					showPopupMenu("",0,getHeight());
+			}
+			else
+				super.processMouseEvent(evt);
+
+			break;
+		case MouseEvent.MOUSE_EXITED:
+			setCursor(Cursor.getDefaultCursor());
+			super.processMouseEvent(evt);
+			break;
+		default:
+			super.processMouseEvent(evt);
+			break;
+		}
 	}
 
 	// private members
@@ -299,8 +356,10 @@ public class HistoryTextField extends JTextField
 		ActionHandler actionListener = new ActionHandler();
 
 		popup = new JPopupMenu();
-		JMenuItem caption = new JMenuItem(historyModel.getName()
-			+ (text.length() == 0 ? "" : "/" + text));
+		//JMenuItem caption = new JMenuItem(historyModel.getName()
+		//	+ (text.length() == 0 ? "" : "/" + text));
+		JMenuItem caption = new JMenuItem(jEdit.getProperty(
+			"history.caption"));
 		caption.getModel().setEnabled(false);
 		popup.add(caption);
 		popup.addSeparator();
@@ -343,58 +402,55 @@ public class HistoryTextField extends JTextField
 		}
 	}
 
-	class MouseHandler extends MouseAdapter
+	class MouseHandler extends MouseMotionAdapter
 	{
-		public void mousePressed(MouseEvent evt)
+		public void mouseMoved(MouseEvent evt)
 		{
-			if((evt.getModifiers() & InputEvent.CTRL_MASK) != 0)
-			{
-				showPopupMenu(getText().substring(0,getSelectionStart()),
-					0,getHeight());
-			}
-			else if((evt.getModifiers() & InputEvent.BUTTON3_MASK) != 0)
-				showPopupMenu("",0,getHeight());
+			Border border = getBorder();
+			Insets insets = border.getBorderInsets(HistoryTextField.this);
+
+			if(evt.getX() >= getWidth() - insets.right)
+				setCursor(Cursor.getDefaultCursor());
+			else
+				setCursor(Cursor.getPredefinedCursor(
+					Cursor.TEXT_CURSOR));
+		}
+	}
+
+	static class HistoryBorder extends AbstractBorder
+	{
+		static final int WIDTH = 16;
+
+		public void paintBorder(Component c, Graphics g,
+			int x, int y, int w, int h)
+		{
+			g.translate(x+w-WIDTH,y-1);
+
+			//if(c.isEnabled())
+			//{
+			//	// vertical separation line
+			//	g.setColor(UIManager.getColor("controlDkShadow"));
+			//	g.drawLine(0,0,0,h);
+			//}
+
+			// down arrow
+			int w2 = WIDTH/2;
+			int h2 = h/2;
+			g.setColor(UIManager.getColor(c.isEnabled()
+				&& ((HistoryTextField)c).getModel() != null
+				? "Menu.foreground" : "Menu.disabledForeground"));
+			g.drawLine(w2-5,h2-2,w2+4,h2-2);
+			g.drawLine(w2-4,h2-1,w2+3,h2-1);
+			g.drawLine(w2-3,h2  ,w2+2,h2  );
+			g.drawLine(w2-2,h2+1,w2+1,h2+1);
+			g.drawLine(w2-1,h2+2,w2  ,h2+2);
+
+			g.translate(-(x+w-WIDTH),-(y-1));
+		}
+
+		public Insets getBorderInsets(Component c)
+		{
+			return new Insets(0,0,0,WIDTH);
 		}
 	}
 }
-
-/*
- * ChangeLog:
- * $Log: HistoryTextField.java,v $
- * Revision 1.37  2000/11/13 11:19:27  sp
- * Search bar reintroduced, more BeanShell stuff
- *
- * Revision 1.36  2000/09/01 11:31:00  sp
- * Rudimentary 'command line', similar to emacs minibuf
- *
- * Revision 1.35  2000/08/29 07:47:12  sp
- * Improved complete word, type-select in VFS browser, bug fixes
- *
- * Revision 1.34  2000/08/16 08:47:19  sp
- * Stuff
- *
- * Revision 1.33  2000/07/31 11:32:09  sp
- * VFS file chooser is now in a minimally usable state
- *
- * Revision 1.32  2000/01/29 01:56:51  sp
- * Buffer tabs updates, some other stuff
- *
- * Revision 1.31  1999/11/21 07:59:30  sp
- * JavaDoc updates
- *
- * Revision 1.30  1999/11/16 08:21:20  sp
- * Various fixes, attempt at beefing up expand-abbrev
- *
- * Revision 1.29  1999/09/30 12:21:04  sp
- * No net access for a month... so here's one big jEdit 2.1pre1
- *
- * Revision 1.28  1999/05/09 04:48:47  sp
- * Funky history menus
- *
- * Revision 1.27  1999/05/09 03:50:17  sp
- * HistoryTextField is now a text field again
- *
- * Revision 1.26  1999/05/08 00:13:00  sp
- * Splash screen change, minor documentation update, toolbar API fix
- *
- */

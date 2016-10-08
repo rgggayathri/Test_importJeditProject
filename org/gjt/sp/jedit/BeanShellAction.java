@@ -1,6 +1,6 @@
 /*
  * BeanShellAction.java - BeanShell action
- * Copyright (C) 2000 Slava Pestov
+ * Copyright (C) 2000, 2001 Slava Pestov
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -19,28 +19,32 @@
 
 package org.gjt.sp.jedit;
 
-import bsh.BshMethod;
-import bsh.Primitive;
 import java.awt.event.ActionEvent;
 import java.awt.*;
 
 public class BeanShellAction extends EditAction
 {
-	public BeanShellAction(String name, String code,
+	public BeanShellAction(String name, boolean plugin, String code,
 		String isSelected, boolean noRepeat, boolean noRecord)
 	{
-		super(name);
+		super(name,plugin);
 
 		this.code = code;
+		this.isSelected = isSelected;
 		this.noRepeat = noRepeat;
 		this.noRecord = noRecord;
 
+		/* Some characters that we like to use in action names
+		 * ('.', '-') are not allowed in BeanShell identifiers. */
+		sanitizedName = name.replace('.','_').replace('-','_');
+
+		// evaluate isSelected now so that menus don't take a long
+		// time to first come up
 		if(isSelected != null)
 		{
-			String cachedIsSelectedName = "_action" + counter++;
-			BeanShell.eval(null,cachedIsSelectedName + "(){"
-				+ isSelected + "}",false);
-			cachedIsSelected = BeanShell.getMethod(cachedIsSelectedName);
+			String cachedIsSelectedName = "selected_" + sanitizedName;
+			cachedIsSelected = BeanShell.cacheBlock(cachedIsSelectedName,
+				isSelected,true);
 		}
 	}
 
@@ -48,27 +52,24 @@ public class BeanShellAction extends EditAction
 	{
 		if(cachedCode == null)
 		{
-			String cachedCodeName = "_action" + counter++;
-			BeanShell.eval(null,cachedCodeName + "(){"
-				+ code + "}",false);
-			cachedCode = BeanShell.getMethod(cachedCodeName);
+			String cachedCodeName = "action_" + sanitizedName;
+			cachedCode = BeanShell.cacheBlock(cachedCodeName,code,true);
 		}
-		BeanShell.invokeMethod(view,cachedCode,EMPTY_ARGS);
+		BeanShell.runCachedBlock(cachedCode,view,null);
 	}
 
 	public boolean isToggle()
 	{
-		return cachedIsSelected != null;
+		return isSelected != null;
 	}
 
-	public boolean isSelected(Component comp)
+	public boolean isSelected(View view)
 	{
-		if(cachedIsSelected == null)
+		if(isSelected == null)
 			return false;
 
-		Primitive returnValue = (Primitive)BeanShell.invokeMethod(
-			getView(comp),cachedIsSelected,EMPTY_ARGS);
-		return returnValue.getValue().equals(Boolean.TRUE);
+		return Boolean.TRUE.equals(BeanShell.runCachedBlock(cachedIsSelected,
+			view,null));
 	}
 
 	public boolean noRepeat()
@@ -87,13 +88,11 @@ public class BeanShellAction extends EditAction
 	}
 
 	// private members
-	private static final Object[] EMPTY_ARGS = new Object[0];
-
-	private static int counter;
-
 	private boolean noRepeat;
 	private boolean noRecord;
 	private String code;
-	private BshMethod cachedCode;
-	private BshMethod cachedIsSelected;
+	private String isSelected;
+	private String cachedCode;
+	private String cachedIsSelected;
+	private String sanitizedName;
 }

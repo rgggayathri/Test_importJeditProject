@@ -1,6 +1,6 @@
 /*
  * CurrentDirectoryMenu.java - File list menu
- * Copyright (C) 2000 Slava Pestov
+ * Copyright (C) 2000, 2001 Slava Pestov
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -24,28 +24,19 @@ import java.awt.event.*;
 import java.io.File;
 import org.gjt.sp.jedit.*;
 
-public class CurrentDirectoryMenu extends JMenu
+public class CurrentDirectoryMenu extends EnhancedMenu
 {
-	public CurrentDirectoryMenu(View view)
+	public CurrentDirectoryMenu()
 	{
-		String label = jEdit.getProperty("current-directory.label");
-		int index = label.indexOf('$');
-		char mnemonic = '\0';
-		if(index != -1)
-		{
-			mnemonic = Character.toUpperCase(label.charAt(index+1));
-			label = label.substring(0,index) + label.substring(index+1);
-		}
-		setText(label);
-		setMnemonic(mnemonic);
-
-		this.view = view;
+		super("current-directory");
 	}
 
 	public void setPopupMenuVisible(boolean b)
 	{
 		if(b)
 		{
+			final View view = EditAction.getView(this);
+
 			if(getMenuComponentCount() != 0)
 				removeAll();
 
@@ -76,6 +67,10 @@ public class CurrentDirectoryMenu extends JMenu
 				}
 			};
 
+			// for filtering out backups
+			String backupPrefix = jEdit.getProperty("backup.prefix");
+			String backupSuffix = jEdit.getProperty("backup.suffix");
+
 			String[] list = dir.list();
 			if(list != null)
 			{
@@ -85,6 +80,22 @@ public class CurrentDirectoryMenu extends JMenu
 				{
 					String name = list[i];
 
+					// skip marker files
+					if(name.endsWith(".marks"))
+						continue;
+
+					// skip autosave files
+					if(name.startsWith("#") && name.endsWith("#"))
+						continue;
+
+					// skip backup files
+					if((backupPrefix.length() != 0
+						&& name.startsWith(backupPrefix))
+						|| (backupSuffix.length() != 0
+						&& name.endsWith(backupSuffix)))
+						continue;
+
+					// skip directories
 					file = new File(dir,name);
 					if(file.isDirectory())
 						continue;
@@ -95,7 +106,7 @@ public class CurrentDirectoryMenu extends JMenu
 
 					if(current.getItemCount() >= 20)
 					{
-						current.addSeparator();
+						//current.addSeparator();
 						JMenu newCurrent = new JMenu(
 							jEdit.getProperty(
 							"common.more"));
@@ -110,7 +121,4 @@ public class CurrentDirectoryMenu extends JMenu
 
 		super.setPopupMenuVisible(b);
 	}
-
-	// private members
-	private View view;
 }

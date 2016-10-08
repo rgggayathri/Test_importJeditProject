@@ -3,15 +3,13 @@
 <!DOCTYPE MODE SYSTEM "xmode.dtd">
 
 <!-- Ruby mode by Ian Maclean -->
-<MODE NAME="ruby">
+<MODE>
 	<PROPS>
 		<PROPERTY NAME="indentOpenBrackets" VALUE="{" />
 		<PROPERTY NAME="indentCloseBrackets" VALUE="}" />
 		<PROPERTY NAME="commentStart" VALUE="=begin" />
 		<PROPERTY NAME="commentEnd" VALUE="=end" />
-		<PROPERTY NAME="boxComment" VALUE=" *" />
-		<PROPERTY NAME="blockComment" VALUE="#" />
-		<PROPERTY NAME="filenameGlob" VALUE="*.rb" />
+		<PROPERTY NAME="lineComment" VALUE="#" />
 		<PROPERTY NAME="noWordSep" VALUE="_" />
 	</PROPS>
 	<RULES ESCAPE="\" IGNORE_CASE="FALSE" HIGHLIGHT_DIGITS="TRUE">

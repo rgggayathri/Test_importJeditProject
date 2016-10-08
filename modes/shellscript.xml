@@ -2,11 +2,9 @@
 
 <!DOCTYPE MODE SYSTEM "xmode.dtd">
 
-<MODE NAME="shellscript">
+<MODE>
 	<PROPS>
-		<PROPERTY NAME="blockComment" VALUE="#" />
-		<PROPERTY NAME="filenameGlob" VALUE="*.{csh,sh}" />
-		<PROPERTY NAME="firstlineGlob" VALUE="#!/*sh*" />
+		<PROPERTY NAME="lineComment" VALUE="#" />
 	</PROPS>
 	<RULES ESCAPE="\" IGNORE_CASE="TRUE" HIGHLIGHT_DIGITS="TRUE">
 		<!-- whitespace: (space and tab) -->
@@ -88,7 +86,7 @@
 		<SEQ TYPE="NULL">~</SEQ>
 		<SEQ TYPE="NULL">}</SEQ>
 		<SEQ TYPE="NULL">{</SEQ>
-		<SEQ TYPE="NULL">.</SEQ>
+		<!-- SEQ TYPE="NULL">.</SEQ -->
 		<SEQ TYPE="NULL">,</SEQ>
 		<SEQ TYPE="NULL">;</SEQ>
 		<SEQ TYPE="NULL">]</SEQ>

@@ -1,6 +1,7 @@
 /*
  * FileVFS.java - Local filesystem VFS
- * Copyright (C) 1998, 1999, 2000 Slava Pestov
+ * Copyright (C) 1998, 1999, 2000, 2001 Slava Pestov
+ * Portions copyright (C) 1998, 1999, 2000 Peter Graves
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -19,8 +20,8 @@
 
 package org.gjt.sp.jedit.io;
 
-import javax.swing.filechooser.FileSystemView;
 import java.awt.Component;
+import java.lang.reflect.Method;
 import java.io.*;
 import java.util.Vector;
 import org.gjt.sp.jedit.*;
@@ -29,16 +30,16 @@ import org.gjt.sp.util.Log;
 /**
  * Local filesystem VFS.
  * @author Slava Pestov
- * @version $Id: FileVFS.java,v 1.29 2001/01/22 05:35:08 sp Exp $
+ * @version $Id: FileVFS.java,v 1.3 2001/09/05 01:25:05 spestov Exp $
  */
 public class FileVFS extends VFS
 {
 	public static final String BACKED_UP_PROPERTY = "FileVFS__backedUp";
+	public static final String PERMISSIONS_PROPERTY = "FileVFS__perms";
 
 	public FileVFS()
 	{
 		super("file");
-		fsView = FileSystemView.getFileSystemView();
 	}
 
 	public int getCapabilities()
@@ -60,13 +61,6 @@ public class FileVFS extends VFS
 
 		if(path.equals("/"))
 			return FileRootsVFS.PROTOCOL + ":";
-
-		/* File[] roots = fsView.getRoots();
-		for(int i = 0; i < roots.length; i++)
-		{
-			if(roots[i].getPath().equals(path))
-				return FileRootsVFS.PROTOCOL + ":";
-		} */
 
 		return MiscUtilities.getParentOfPath(path);
 	}
@@ -136,15 +130,12 @@ public class FileVFS extends VFS
 			return false;
 		}
 
-		/* When doing a 'save as', the path to save to (path)
-		 * will not be the same as the buffer's previous path
-		 * (buffer.getPath()). In that case, we want to create
-		 * a backup of the new path, even if the old path was
-		 * backed up as well (BACKED_UP property set) */
-		if(!path.equals(buffer.getPath()))
-			buffer.getDocumentProperties().remove(BACKED_UP_PROPERTY);
+		// On Unix, preserve permissions
+		int permissions = getPermissions(buffer.getPath());
+		Log.log(Log.DEBUG,this,buffer.getPath() + " has permissions 0"
+			+ Integer.toString(permissions,8));
+		buffer.putProperty(PERMISSIONS_PROPERTY,new Integer(permissions));
 
-		backup(buffer,file);
 		return super.save(view,buffer,path);
 	}
 
@@ -193,16 +184,26 @@ public class FileVFS extends VFS
 		File directory = new File(path);
 		String[] list = directory.list();
 		if(list == null)
+		{
+			String[] pp = { path };
+			VFSManager.error(comp,"directory-error-nomsg",pp);
 			return null;
+		}
 
 		Vector list2 = new Vector();
 		for(int i = 0; i < list.length; i++)
 		{
 			String name = list[i];
-			VFS.DirectoryEntry file = _getDirectoryEntry(session,
-				MiscUtilities.constructPath(path,name),comp);
-			if(file != null)
-				list2.addElement(file);
+			String _path;
+			if(path.endsWith(File.separator))
+				_path = path + name;
+			else
+				_path = path + File.separatorChar + name;
+
+			VFS.DirectoryEntry entry = _getDirectoryEntry(null,_path,null);
+
+			if(entry != null)
+				list2.addElement(entry);
 		}
 
 		VFS.DirectoryEntry[] retVal = new VFS.DirectoryEntry[list2.size()];
@@ -228,8 +229,27 @@ public class FileVFS extends VFS
 		else
 			type = VFS.DirectoryEntry.FILE;
 
-		return new VFS.DirectoryEntry(file.getName(),
-			path,path,type,file.length(),fsView.isHiddenFile(file));
+		boolean hidden;
+		if(isHiddenMethod != null)
+		{
+			try
+			{
+				hidden = Boolean.TRUE.equals(isHiddenMethod.invoke(
+					file,new Object[0]));
+			}
+			catch(Exception e)
+			{
+				Log.log(Log.ERROR,this,e);
+				hidden = false;
+			}
+		}
+		else if(isUnix)
+			hidden = (file.getName().charAt(0) == '.');
+		else
+			hidden = false;
+
+		return new VFS.DirectoryEntry(file.getName(),path,path,type,
+			file.length(),hidden);
 	}
 
 	public boolean _delete(Object session, String path, Component comp)
@@ -243,61 +263,24 @@ public class FileVFS extends VFS
 	public boolean _rename(Object session, String from, String to,
 		Component comp)
 	{
-		boolean retVal = new File(from).renameTo(new File(to));
+		File _to = new File(to);
+		_to.delete();
+		boolean retVal = new File(from).renameTo(_to);
 		VFSManager.sendVFSUpdate(this,from,true);
+		VFSManager.sendVFSUpdate(this,to,true);
 		return retVal;
 	}
 
-
 	public boolean _mkdir(Object session, String directory, Component comp)
 	{
-		boolean retVal = new File(directory).mkdir();
+		boolean retVal = new File(directory).mkdirs();
 		VFSManager.sendVFSUpdate(this,directory,true);
 		return retVal;
 	}
 
-	public InputStream _createInputStream(Object session, String path,
-		boolean ignoreErrors, Component comp) throws IOException
+	public void _backup(Object session, String path, Component comp)
+		throws IOException
 	{
-		try
-		{
-			return new FileInputStream(path);
-		}
-		catch(IOException io)
-		{
-			if(ignoreErrors)
-				return null;
-			else
-				throw io;
-		}
-	}
-
-	public OutputStream _createOutputStream(Object session, String path,
-		Component comp) throws IOException
-	{
-		OutputStream retVal = new FileOutputStream(path);
-
-		// commented out for now, because updating VFS browsers
-		// every time file is saved gets annoying
-		//VFSManager.sendVFSUpdate(this,path,true);
-		return retVal;
-	}
-
-	// private members
-	private FileSystemView fsView;
-
-	// The BACKED_UP flag prevents more than one backup from being
-	// written per session (I guess this should be made configurable
-	// in the future)
-	//
-	// we don't fire a VFSUpdate in this message as _createOutputStream()
-	// will do it anyway
-	private void backup(Buffer buffer, File file)
-	{
-		if(buffer.getProperty(BACKED_UP_PROPERTY) != null)
-			return;
-		buffer.putProperty(BACKED_UP_PROPERTY,Boolean.TRUE);
-
 		// Fetch properties
 		int backups;
 		try
@@ -316,6 +299,8 @@ public class FileVFS extends VFS
 
 		String backupPrefix = jEdit.getProperty("backup.prefix","");
 		String backupSuffix = jEdit.getProperty("backup.suffix","~");
+
+		File file = new File(path);
 
 		// Check for backup.directory property, and create that
 		// directory if it doesn't exist
@@ -369,48 +354,195 @@ public class FileVFS extends VFS
 				+ "1" + backupSuffix));
 		}
 	}
-}
 
-/*
- * ChangeLog:
- * $Log: FileVFS.java,v $
- * Revision 1.29  2001/01/22 05:35:08  sp
- * bug fixes galore
- *
- * Revision 1.28  2000/12/02 02:44:41  sp
- * Documentation updates, complete icon set now included
- *
- * Revision 1.27  2000/11/11 02:59:30  sp
- * FTP support moved out of the core into a plugin
- *
- * Revision 1.26  2000/11/07 10:08:32  sp
- * Options dialog improvements, documentation changes, bug fixes
- *
- * Revision 1.25  2000/11/02 09:19:33  sp
- * more features
- *
- * Revision 1.24  2000/10/12 09:28:27  sp
- * debugging and polish
- *
- * Revision 1.23  2000/09/26 10:19:47  sp
- * Bug fixes, spit and polish
- *
- * Revision 1.22  2000/08/31 02:54:00  sp
- * Improved activity log, bug fixes
- *
- * Revision 1.21  2000/08/29 07:47:13  sp
- * Improved complete word, type-select in VFS browser, bug fixes
- *
- * Revision 1.20  2000/08/27 02:06:52  sp
- * Filter combo box changed to a text field in VFS browser, passive mode FTP toggle
- *
- * Revision 1.19  2000/08/23 09:51:48  sp
- * Documentation updates, abbrev updates, bug fixes
- *
- * Revision 1.18  2000/08/22 07:25:01  sp
- * Improved abbrevs, bug fixes
- *
- * Revision 1.17  2000/08/20 07:29:31  sp
- * I/O and VFS browser improvements
- *
- */
+	public InputStream _createInputStream(Object session, String path,
+		boolean ignoreErrors, Component comp) throws IOException
+	{
+		try
+		{
+			return new FileInputStream(path);
+		}
+		catch(IOException io)
+		{
+			if(ignoreErrors)
+				return null;
+			else
+				throw io;
+		}
+	}
+
+	public OutputStream _createOutputStream(Object session, String path,
+		Component comp) throws IOException
+	{
+		OutputStream retVal = new FileOutputStream(path);
+
+		// commented out for now, because updating VFS browsers
+		// every time file is saved gets annoying
+		//VFSManager.sendVFSUpdate(this,path,true);
+		return retVal;
+	}
+
+	public void _saveComplete(Object session, Buffer buffer, Component comp)
+	{
+		int permissions = ((Integer)buffer.getProperty(PERMISSIONS_PROPERTY))
+			.intValue();
+		setPermissions(buffer.getPath(),permissions);
+	}
+
+	/** Code borrowed from j text editor (http://www.armedbear.org) */
+	/** I made some changes to make it support suid, sgid and sticky files */
+
+	/**
+	 * Returns numeric permissions of a file. On non-Unix systems, always
+	 * returns zero.
+	 * @since jEdit 3.2pre9
+	 */
+	public static int getPermissions(String path)
+	{
+		int permissions = 0;
+
+		if(isUnix)
+		{
+			String[] cmdarray = { "ls", "-ld", path };
+
+			try
+			{
+				Process process = Runtime.getRuntime().exec(cmdarray);
+
+				BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+
+				String output = reader.readLine();
+
+				if(output != null)
+				{
+					String s = output.substring(1, 10);
+
+					if(s.length() == 9)
+					{
+						if(s.charAt(0) == 'r')
+							permissions += 0400;
+						if(s.charAt(1) == 'w')
+							permissions += 0200;
+						if(s.charAt(2) == 'x')
+							permissions += 0100;
+						else if(s.charAt(2) == 's')
+							permissions += 04100;
+						else if(s.charAt(2) == 'S')
+							permissions += 04000;
+						if(s.charAt(3) == 'r')
+							permissions += 040;
+						if(s.charAt(4) == 'w')
+							permissions += 020;
+						if(s.charAt(5) == 'x')
+							permissions += 010;
+						else if(s.charAt(5) == 's')
+							permissions += 02010;
+						else if(s.charAt(5) == 'S')
+							permissions += 02000;
+						if(s.charAt(6) == 'r')
+							permissions += 04;
+						if(s.charAt(7) == 'w')
+							permissions += 02;
+						if(s.charAt(8) == 'x')
+							permissions += 01;
+						else if(s.charAt(8) == 't')
+							permissions += 01001;
+						else if(s.charAt(8) == 'T')
+							permissions += 01000;
+					}
+				}
+			}
+
+			// Feb 4 2000 5:30 PM
+			// Catch Throwable here rather than Exception.
+			// Kaffe's implementation of Runtime.exec throws java.lang.InternalError.
+			catch (Throwable t)
+			{
+			}
+		}
+
+		return permissions;
+	}
+
+	/**
+	 * Sets numeric permissions of a file. On non-Unix platforms,
+	 * does nothing.
+	 * @since jEdit 3.2pre9
+	 */
+	public static void setPermissions(String path, int permissions)
+	{
+		if(permissions != 0)
+		{
+			if(isUnix)
+			{
+				String[] cmdarray = { "chmod", Integer.toString(permissions, 8), path };
+
+				try
+				{
+					Process process = Runtime.getRuntime().exec(cmdarray);
+					process.getInputStream().close();
+					process.getOutputStream().close();
+					process.getErrorStream().close();
+					int exitCode = process.waitFor();
+					if(exitCode != 0)
+						Log.log(Log.NOTICE,FileVFS.class,"chmod exited with code " + exitCode);
+				}
+
+				// Feb 4 2000 5:30 PM
+				// Catch Throwable here rather than Exception.
+				// Kaffe's implementation of Runtime.exec throws java.lang.InternalError.
+				catch (Throwable t)
+				{
+				}
+			}
+		}
+	}
+	
+	// private members
+	private static boolean isUnix;
+	private static Method isHiddenMethod;
+
+	static
+	{
+		// If the file separator is '/', the OS is either Unix,
+		// MacOS X, or MacOS.
+		if(File.separatorChar == '/')
+		{
+			String osName = System.getProperty("os.name");
+			if(osName.indexOf("Mac") != -1)
+			{
+				if(osName.indexOf("X") != -1)
+				{
+					// MacOS X is Unix.
+					isUnix = true;
+				}
+				else
+				{
+					// Classic MacOS is definately not Unix.
+					isUnix = false;
+				}
+			}
+			else
+			{
+				// Unix.
+				isUnix = true;
+			}
+		}
+
+		Log.log(Log.DEBUG,FileVFS.class,"Unix operating system "
+			+ (isUnix ? "detected; will" : "not detected; will not")
+			+ " use permission-preserving code");
+
+		try
+		{
+			isHiddenMethod = File.class.getMethod("isHidden",new Class[0]);
+			Log.log(Log.DEBUG,FileVFS.class,"File.isHidden() method"
+				+ " detected");
+		}
+		catch(Exception e)
+		{
+			Log.log(Log.DEBUG,FileVFS.class,"File.isHidden() method"
+				+ " not detected");
+		}
+	}
+}

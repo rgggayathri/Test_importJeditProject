@@ -25,7 +25,7 @@ import org.gjt.sp.jedit.gui.OptionsDialog;
 /**
  * An EditBus plugin
  * @author Slava Pestov
- * @version $Id: EBPlugin.java,v 1.4 2000/01/29 10:12:43 sp Exp $
+ * @version $Id: EBPlugin.java,v 1.1.1.1 2001/09/02 05:37:06 spestov Exp $
  */
 public abstract class EBPlugin extends EditPlugin implements EBComponent
 {
@@ -36,8 +36,5 @@ public abstract class EBPlugin extends EditPlugin implements EBComponent
 	public void handleMessage(EBMessage message) {}
 
 	// protected members
-	protected EBPlugin()
-	{
-		EditBus.addToBus(this);
-	}
+	protected EBPlugin() {}
 }

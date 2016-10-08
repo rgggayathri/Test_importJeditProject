@@ -1,6 +1,6 @@
 /*
  * VFSBrowser.java - VFS browser
- * Copyright (C) 2000 Slava Pestov
+ * Copyright (C) 2000, 2001 Slava Pestov
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -37,7 +37,7 @@ import org.gjt.sp.util.Log;
 /**
  * The main class of the VFS browser.
  * @author Slava Pestov
- * @version $Id: VFSBrowser.java,v 1.35 2001/01/22 05:35:08 sp Exp $
+ * @version $Id: VFSBrowser.java,v 1.1.1.1 2001/09/02 05:38:21 spestov Exp $
  */
 public class VFSBrowser extends JPanel implements EBComponent, DockableWindow
 {
@@ -128,7 +128,12 @@ public class VFSBrowser extends JPanel implements EBComponent, DockableWindow
 		filterCheckbox.setBorder(new EmptyBorder(0,0,0,12));
 		filterCheckbox.setSelected(mode != BROWSER ||
 			jEdit.getBooleanProperty("vfs.browser.filter-enabled"));
-		filterCheckbox.setForeground(UIManager.getColor("Label.foreground"));
+
+		// we ensure that the foreground color is not an UIResource
+		// so that updateUI() does not reset the color back to the
+		// default...
+		filterCheckbox.setForeground(new Color(
+			UIManager.getColor("Label.foreground").getRGB()));
 		filterCheckbox.addActionListener(actionHandler);
 		cons.gridx = 0;
 		cons.weightx = 0.0f;
@@ -204,6 +209,8 @@ public class VFSBrowser extends JPanel implements EBComponent, DockableWindow
 				else
 					path = pathModel.getItem(0);
 			}
+			else if(defaultPath.equals("favorites"))
+				path = "favorites:";
 			else
 			{
 				// unknown value??!!!
@@ -255,7 +262,20 @@ public class VFSBrowser extends JPanel implements EBComponent, DockableWindow
 		else if(msg instanceof PropertiesChanged)
 			propertiesChanged();
 		else if(msg instanceof VFSUpdate)
+		{
+			// this is a dirty hack and it relies on the fact
+			// that updates for parents are sent before updates
+			// for the changed nodes themselves (if this was not
+			// the case, the browser wouldn't be updated properly
+			// on delete, etc).
+			//
+			// to avoid causing '> 1 request' errors, don't reload
+			// directory if request already active
+			if(requestRunning)
+				return;
+
 			browserView.reloadDirectory(((VFSUpdate)msg).getPath());
+		}
 	}
 
 	public String getDirectory()
@@ -323,9 +343,8 @@ public class VFSBrowser extends JPanel implements EBComponent, DockableWindow
 			MiscUtilities.getProtocolOfURL(path)))
 		{
 			Object[] args = { path.substring(FavoritesVFS.PROTOCOL.length() + 1) };
-			int result = JOptionPane.showConfirmDialog(this,
-				jEdit.getProperty("vfs.browser.delete-favorites.message",args),
-				jEdit.getProperty("vfs.browser.delete-favorites.title"),
+			int result = GUIUtilities.confirm(this,
+				"vfs.browser.delete-favorites",args,
 				JOptionPane.YES_NO_OPTION,
 				JOptionPane.WARNING_MESSAGE);
 			if(result != JOptionPane.YES_OPTION)
@@ -334,9 +353,8 @@ public class VFSBrowser extends JPanel implements EBComponent, DockableWindow
 		else
 		{
 			Object[] args = { path };
-			int result = JOptionPane.showConfirmDialog(this,
-				jEdit.getProperty("vfs.browser.delete-confirm.message",args),
-				jEdit.getProperty("vfs.browser.delete-confirm.title"),
+			int result = GUIUtilities.confirm(this,
+				"vfs.browser.delete-confirm",args,
 				JOptionPane.YES_NO_OPTION,
 				JOptionPane.WARNING_MESSAGE);
 			if(result != JOptionPane.YES_OPTION)
@@ -359,13 +377,14 @@ public class VFSBrowser extends JPanel implements EBComponent, DockableWindow
 
 	public void rename(String from)
 	{
-		String[] args = { MiscUtilities.getFileName(from) };
+		VFS vfs = VFSManager.getVFSForPath(from);
+
+		String filename = vfs.getFileName(from);
+		String[] args = { filename };
 		String to = GUIUtilities.input(this,"vfs.browser.rename",
-			args,null);
+			args,filename);
 		if(to == null)
 			return;
-
-		VFS vfs = VFSManager.getVFSForPath(from);
 
 		to = vfs.constructPath(vfs.getParentOfPath(from),to);
 
@@ -387,10 +406,25 @@ public class VFSBrowser extends JPanel implements EBComponent, DockableWindow
 		if(newDirectory == null)
 			return;
 
-		VFS vfs = VFSManager.getVFSForPath(newDirectory);
+		// if a directory is selected, create new dir in there.
+		// if a file is selected, create new dir inside its parent.
+		VFS.DirectoryEntry[] selected = getSelectedFiles();
+		String parent;
+		if(selected.length == 0)
+			parent = path;
+		else if(selected[0].type == VFS.DirectoryEntry.FILE)
+		{
+			parent = selected[0].path;
+			parent = VFSManager.getVFSForPath(parent)
+				.getParentOfPath(parent);
+		}
+		else
+			parent = selected[0].path;
+
+		VFS vfs = VFSManager.getVFSForPath(parent);
 
 		// path is the currently viewed directory in the browser
-		newDirectory = vfs.constructPath(path,newDirectory);
+		newDirectory = vfs.constructPath(parent,newDirectory);
 
 		Object session = vfs.createVFSSession(newDirectory,this);
 		if(session == null)
@@ -429,14 +463,33 @@ public class VFSBrowser extends JPanel implements EBComponent, DockableWindow
 		this.showHiddenFiles = showHiddenFiles;
 	}
 
-	public RE getFilenameFilter()
+	/**
+	 * Returns the file name filter glob.
+	 * @since jEdit 3.2pre2
+	 */
+	public String getFilenameFilter()
 	{
-		return filenameFilter;
+		if(filterCheckbox.isSelected())
+		{
+			String filter = filterField.getText();
+			if(filter.length() == 0)
+				return "*";
+			else
+				return filter;
+		}
+		else
+			return "*";
 	}
 
-	public void setFilenameFilter(RE filenameFilter)
+	public void setFilenameFilter(String filter)
 	{
-		this.filenameFilter = filenameFilter;
+		if(filter == null || filter.length() == 0 || filter.equals("*"))
+			filterCheckbox.setSelected(false);
+		else
+		{
+			filterCheckbox.setSelected(true);
+			filterField.setText(filter);
+		}
 	}
 
 	public BrowserView getBrowserView()
@@ -691,41 +744,15 @@ public class VFSBrowser extends JPanel implements EBComponent, DockableWindow
 
 	private void propertiesChanged()
 	{
-		// only reload browser if necessary, to avoid annoying
-		// 'flickering'
-		boolean newShowHiddenFiles = jEdit.getBooleanProperty("vfs.browser.showHiddenFiles");
-		boolean newSortFiles = jEdit.getBooleanProperty("vfs.browser.sortFiles");
-		boolean newSortMixFilesAndDirs = jEdit.getBooleanProperty("vfs.browser.sortMixFilesAndDirs");
-		boolean newSortIgnoreCase = jEdit.getBooleanProperty("vfs.browser.sortIgnoreCase");
+		showHiddenFiles = jEdit.getBooleanProperty("vfs.browser.showHiddenFiles");
+		sortFiles = jEdit.getBooleanProperty("vfs.browser.sortFiles");
+		sortMixFilesAndDirs = jEdit.getBooleanProperty("vfs.browser.sortMixFilesAndDirs");
+		sortIgnoreCase = jEdit.getBooleanProperty("vfs.browser.sortIgnoreCase");
 		doubleClickClose = jEdit.getBooleanProperty("vfs.browser.doubleClickClose");
 
-		boolean reload = false;
+		browserView.propertiesChanged();
 
-		if(newShowHiddenFiles != showHiddenFiles)
-		{
-			showHiddenFiles = newShowHiddenFiles;
-			reload = true;
-		}
-
-		if(newSortFiles != sortFiles)
-		{
-			sortFiles = newSortFiles;
-			reload = true;
-		}
-
-		if(newSortMixFilesAndDirs != sortMixFilesAndDirs)
-		{
-			sortMixFilesAndDirs = newSortMixFilesAndDirs;
-			reload = true;
-		}
-
-		if(newSortIgnoreCase != sortIgnoreCase)
-		{
-			sortIgnoreCase = newSortIgnoreCase;
-			reload = true;
-		}
-
-		if(path != null && reload)
+		if(path != null)
 			reloadDirectory();
 	}
 
@@ -735,6 +762,9 @@ public class VFSBrowser extends JPanel implements EBComponent, DockableWindow
 	{
 		if(requestRunning)
 		{
+			// dump stack trace for debugging purposes
+			Log.log(Log.DEBUG,this,new Throwable("For debugging purposes"));
+
 			GUIUtilities.error(this,"browser-multiple-io",null);
 			return false;
 		}
