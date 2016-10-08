@@ -111,8 +111,11 @@ public class SwingInstall extends JFrame
 		InstallWizard(ChooseDirectory chooseDirectory,
 			SelectComponents selectComponents)
 		{
-			super("Cancel","Previous","Next","Install");
-			setPages(new Component[] { new About(), chooseDirectory,
+			super(new Color(0xccccff),
+				new ImageIcon(InstallWizard.class.getResource(
+				installer.getProperty("app.logo"))),
+				"Cancel","Previous","Next","Install",
+				new Component[] { new About(), chooseDirectory,
 				selectComponents });
 		}
 
@@ -132,13 +135,6 @@ public class SwingInstall extends JFrame
 		About()
 		{
 			super(new BorderLayout());
-
-			JLabel caption = new JLabel(appName + " " + appVersion);
-			caption.setBorder(new EmptyBorder(0,0,12,0));
-			Font font = caption.getFont();
-			caption.setFont(new Font(font.getFamily(),font.getStyle(),18));
-
-			add(BorderLayout.NORTH,caption);
 
 			JEditorPane text = new JEditorPane();
 

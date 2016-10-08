@@ -1,15 +1,11 @@
 ###
 ### jEdit global properties
-### Copyright (C) 1998, 2001 Slava Pestov
+### By Slava Pestov <sp@gjt.org>
 ###
 
 ###
 ### GLOBAL SETTINGS
 ###
-
-# If true, welcome screen will be displayed.
-# Set to false after initial startup.
-firstTime=true
 
 # Autosave interval in seconds, 0=off
 autosave=30
@@ -17,8 +13,8 @@ autosave=30
 # Maximum number of elements in a history list
 history=20
 
-# Restore open files on startup?
-restore=true
+# Desktop saving toggle
+saveDesktop=true
 
 # Caret saving toggle
 saveCaret=true
@@ -87,15 +83,9 @@ buffer.wordBreakChars=
 # Non-alphanumeric word characters
 buffer.noWordSep=
 
-# Folds with a level equal to or higher than this will be collapsed
-buffer.collapseFolds=0
-
 ###
 ### VIEW SETTINGS
 ###
-
-# Initially, the view contains a text area with no splits
-view.splits=+
 
 # Show toolbar?
 view.showToolbar=true
@@ -163,7 +153,7 @@ view.gutter.bgColor=#ffffff
 view.gutter.fgColor=#000000
 
 # Gutter highlight color
-view.gutter.highlightColor=#8080ff
+view.gutter.highlightColor=#8080c0
 
 # Gutter current line highlight color
 view.gutter.currentLineColor=#d04040
@@ -175,7 +165,7 @@ view.gutter.markerColor=#ccffcc
 view.gutter.registerColor=#ffffcc
 
 # Gutter border colors
-view.gutter.focusBorderColor=#8080ff
+view.gutter.focusBorderColor=#d04040
 view.gutter.noFocusBorderColor=#808080
 
 # Gutter font name
@@ -188,11 +178,17 @@ view.gutter.fontstyle=0
 # Gutter font size
 view.gutter.fontsize=10
 
+# Gutter width
+view.gutter.width=40
+
 # Gutter border width
 view.gutter.borderWidth=3
 
+# Gutter collapsed/expanded by default
+view.gutter.collapsed=true
+
 # Gutter displays line numbers
-view.gutter.lineNumbers=false
+view.gutter.lineNumbers=true
 
 # Line numbers are drawn with this alignment (left, center, right)
 view.gutter.numberAlignment=right
@@ -202,9 +198,6 @@ view.gutter.highlightInterval=5
 
 # Gutter displays line numbers
 view.gutter.highlightCurrentLine=true
-
-# Marker highlight
-view.gutter.markerHighlight=true
 
 # Docking border color
 view.docking.borderColor=#ccccff
@@ -250,8 +243,7 @@ print.footer=true
 print.lineNumbers=true
 
 # Syntax highlighting?
-print.style=true
-print.color=false
+print.syntax=true
 
 # Margins
 print.margin.top=0.5

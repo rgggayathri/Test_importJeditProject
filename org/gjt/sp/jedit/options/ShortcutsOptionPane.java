@@ -1,6 +1,6 @@
 /*
  * ShortcutsOptionPane.java - Shortcuts options panel
- * Copyright (C) 1999, 2000, 2001 Slava Pestov
+ * Copyright (C) 1999 Slava Pestov
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -24,13 +24,12 @@ import javax.swing.*;
 import java.awt.event.*;
 import java.awt.*;
 import java.util.*;
-import org.gjt.sp.jedit.gui.GrabKeyDialog;
 import org.gjt.sp.jedit.*;
 
 /**
  * Generic key binding editor.
  * @author Slava Pestov
- * @version $Id: ShortcutsOptionPane.java,v 1.8 2001/02/05 09:15:30 sp Exp $
+ * @version $Id: ShortcutsOptionPane.java,v 1.6 2000/11/11 02:59:31 sp Exp $
  */
 public abstract class ShortcutsOptionPane extends AbstractOptionPane
 {
@@ -45,18 +44,16 @@ public abstract class ShortcutsOptionPane extends AbstractOptionPane
 	protected void _init()
 	{
 		setLayout(new BorderLayout());
+		add(BorderLayout.CENTER,createKeyTableScroller());
 
-		keyModel = new ShortcutsModel(createBindings());;
-		keyTable = new JTable(keyModel);
-		keyTable.getTableHeader().setReorderingAllowed(false);
-		keyTable.getTableHeader().addMouseListener(new HeaderMouseHandler());
-		keyTable.addMouseListener(new TableMouseHandler());
-		Dimension d = keyTable.getPreferredSize();
-		d.height = Math.min(d.height,200);
-		JScrollPane scroller = new JScrollPane(keyTable);
-		scroller.setPreferredSize(d);
-
-		add(BorderLayout.CENTER,scroller);
+		JPanel panel = new JPanel();
+		label = new JButton(jEdit.getProperty("options.keys.sort.label"));
+		label.addActionListener(new ActionHandler());
+		panel.add(label);
+		shortcut = new JButton(jEdit.getProperty("options.keys.sort.shortcut"));
+		shortcut.addActionListener(new ActionHandler());
+		panel.add(shortcut);
+		add(BorderLayout.SOUTH,panel);
 	}
 
 	protected void _save()
@@ -69,59 +66,46 @@ public abstract class ShortcutsOptionPane extends AbstractOptionPane
 
 	// private members
 	private JTable keyTable;
+	private JButton label;
+	private JButton shortcut;
 	private ShortcutsModel keyModel;
 
-	static class KeyBinding
+	private JScrollPane createKeyTableScroller()
 	{
-		KeyBinding(String name, String label,
-			String shortcut1, String shortcut2)
+		keyModel = createShortcutsModel();
+		keyTable = new JTable(keyModel);
+		keyTable.getTableHeader().setReorderingAllowed(false);
+		Dimension d = keyTable.getPreferredSize();
+		d.height = Math.min(d.height,200);
+		JScrollPane scroller = new JScrollPane(keyTable);
+		scroller.setPreferredSize(d);
+		return scroller;
+	}
+
+	private ShortcutsModel createShortcutsModel()
+	{
+		return new ShortcutsModel(createBindings());
+	}
+
+	public static class KeyBinding
+	{
+		KeyBinding(String name, String label, String shortcut)
 		{
 			this.name = name;
 			this.label = label;
-			this.shortcut1 = shortcut1;
-			this.shortcut2 = shortcut2;
+			this.shortcut = shortcut;
 		}
 
 		String name;
 		String label;
-		String shortcut1, shortcut2;
+		String shortcut;
 	}
 
-	class HeaderMouseHandler extends MouseAdapter
+	class ActionHandler implements ActionListener
 	{
-		public void mouseClicked(MouseEvent evt)
+		public void actionPerformed(ActionEvent evt)
 		{
-			switch(keyTable.getTableHeader().columnAtPoint(evt.getPoint()))
-			{
-			case 0:
-				keyModel.sort(0);
-				break;
-			case 1:
-				keyModel.sort(1);
-				break;
-			case 2:
-				keyModel.sort(2);
-				break;
-			}
-		}
-	}
-
-	class TableMouseHandler extends MouseAdapter
-	{
-		public void mouseClicked(MouseEvent evt)
-		{
-			int row = keyTable.getSelectedRow();
-			int column = keyTable.getSelectedColumn();
-			if(column != 0)
-			{
-				String command = (String)keyModel.getValueAt(row,0);
-
-				String shortcut = new GrabKeyDialog(
-					ShortcutsOptionPane.this,
-					command).getShortcut();
-				if(shortcut != null)
-					keyModel.setValueAt(shortcut,row,column);
-			}
+			keyModel.sort(evt.getSource() == label ? 0 : 1);
 		}
 	}
 }
@@ -144,7 +128,7 @@ class ShortcutsModel extends AbstractTableModel
 
 	public int getColumnCount()
 	{
-		return 3;
+		return 2;
 	}
 
 	public int getRowCount()
@@ -162,27 +146,23 @@ class ShortcutsModel extends AbstractTableModel
 		case 0:
 			return binding.label;
 		case 1:
-			return binding.shortcut1;
-		case 2:
-			return binding.shortcut2;
+			return binding.shortcut;
 		default:
 			return null;
 		}
 	}
 
+	public boolean isCellEditable(int row, int col)
+	{
+		return (col == 1);
+	}
+
 	public void setValueAt(Object value, int row, int col)
 	{
-		if(col == 0)
+		if(col != 1)
 			return;
-
-		ShortcutsOptionPane.KeyBinding binding = (ShortcutsOptionPane.KeyBinding)
-			bindings.elementAt(row);
-
-		if(col == 1)
-			binding.shortcut1 = (String)value;
-		else if(col == 2)
-			binding.shortcut2 = (String)value;
-
+		((ShortcutsOptionPane.KeyBinding)bindings.elementAt(row))
+			.shortcut = (String)value;
 		fireTableRowsUpdated(row,row);
 	}
 
@@ -193,9 +173,7 @@ class ShortcutsModel extends AbstractTableModel
 		case 0:
 			return jEdit.getProperty("options.keys.name");
 		case 1:
-			return jEdit.getProperty("options.keys.shortcut1");
-		case 2:
-			return jEdit.getProperty("options.keys.shortcut2");
+			return jEdit.getProperty("options.keys.binding");
 		default:
 			return null;
 		}
@@ -208,8 +186,7 @@ class ShortcutsModel extends AbstractTableModel
 			ShortcutsOptionPane.KeyBinding binding
 				= (ShortcutsOptionPane.KeyBinding)
 				bindings.elementAt(i);
-			jEdit.setProperty(binding.name + ".shortcut",binding.shortcut1);
-			jEdit.setProperty(binding.name + ".shortcut2",binding.shortcut2);
+			jEdit.setProperty(binding.name + ".shortcut",binding.shortcut);
 		}
 	}
 
@@ -234,18 +211,8 @@ class ShortcutsModel extends AbstractTableModel
 				return label1.compareTo(label2);
 			else
 			{
-				String shortcut1, shortcut2;
-
-				if(col == 1)
-				{
-					shortcut1 = k1.shortcut1;
-					shortcut2 = k2.shortcut1;
-				}
-				else
-				{
-					shortcut1 = k1.shortcut2;
-					shortcut2 = k2.shortcut2;
-				}
+				String shortcut1 = k1.shortcut;
+				String shortcut2 = k2.shortcut;
 
 				if(shortcut1 == null && shortcut2 != null)
 					return 1;
@@ -259,3 +226,26 @@ class ShortcutsModel extends AbstractTableModel
 		}
 	}
 }
+
+/*
+ * ChangeLog:
+ * $Log: ShortcutsOptionPane.java,v $
+ * Revision 1.6  2000/11/11 02:59:31  sp
+ * FTP support moved out of the core into a plugin
+ *
+ * Revision 1.5  2000/04/28 09:29:12  sp
+ * Key binding handling improved, VFS updates, some other stuff
+ *
+ * Revision 1.4  2000/04/18 11:44:31  sp
+ * Context menu editor finished
+ *
+ * Revision 1.3  2000/04/16 08:56:24  sp
+ * Option pane updates
+ *
+ * Revision 1.2  2000/02/15 07:44:30  sp
+ * bug fixes, doc updates, etc
+ *
+ * Revision 1.1  1999/12/19 08:12:34  sp
+ * 2.3 started. Key binding changes  don't require restart, expand-abbrev renamed to complete-word, new splash screen
+ *
+ */

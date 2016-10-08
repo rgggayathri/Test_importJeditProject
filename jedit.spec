@@ -3,7 +3,7 @@
 ###
 
 ### This is a hack. For it to work, you must first install jEdit using
-### the regular installer, then create a 'dummy' jedit31source.tar.gz
+### the regular installer, then create a 'dummy' jedit301source.tar.gz
 ### file in the /usr/src/redhat/SOURCES directory.
 
 ### To create the RPM, invoke:
@@ -11,16 +11,17 @@
 
 Summary: Programmer's text editor written in Java
 Name: jedit
-Version: 3.1
+Version: 3.0.1
 Release: 1
 # REMIND: bump this with each RPM
-Serial: 11
+Serial: 2
 Copyright: GPL
 Group: Application/Editors
-Source0: http://download.sourceforge.net/jedit/jedit31source.tar.gz
+Source0: http://download.sourceforge.net/jedit/jedit301source.tar.gz
 NoSource: 0
-URL: http://www.jedit.org
-Packager: Slava Pestov <slava@jedit.org>
+URL: http://jedit.sourceforge.net
+Packager: Slava Pestov <sp@gjt.org>
+Prefix: /usr
 
 %description
 jEdit is an Open Source, cross platform text editor written in Java. It
@@ -28,18 +29,32 @@ has many advanced features that make text editing easier, such as syntax
 highlighting, auto indent, abbreviation expansion, registers, macros,
 regular expressions, and multiple file search and replace.
 
-jEdit requires Java 2 (or Java 1.1 with Swing 1.1) in order to work.
+jEdit requires either Java 1.1 with Swing 1.1, or Java 2 to work.
 
 %prep
-rm -f /usr/doc/jedit-3.1
-ln -sf ../share/jedit/3.1/doc /usr/doc/jedit-3.1
+rm -f /usr/doc/jedit-3.0.1
+ln -sf ../share/jedit/3.0.1/doc /usr/doc/jedit-3.0.1
 
 %build
 
 %install
 
+%post
+# Create shell script here
+mkdir -p ${RPM_INSTALL_PREFIX}/bin
+echo "#!/bin/sh" > ${RPM_INSTALL_PREFIX}/bin/jedit
+echo "# Java heap size, in megabytes (see doc/README.txt)" \
+	>> ${RPM_INSTALL_PREFIX}/bin/jedit
+echo "JAVA_HEAP_SIZE=16" >> >> ${RPM_INSTALL_PREFIX}/bin/jedit
+echo 'exec java -mx${JAVA_HEAP_SIZE}m ${JEDIT} -classpath \
+	"${CLASSPATH}:'${RPM_INSTALL_PREFIX}'/share/jedit/3.0.1/jedit.jar" \
+	org.gjt.sp.jedit.jEdit $@' >> ${RPM_INSTALL_PREFIX}/bin/jedit
+chmod 755 ${RPM_INSTALL_PREFIX}/bin/jedit
+
+%preun
+rm ${RPM_INSTALL_PREFIX}/bin/jedit
+
 %files
-/usr/bin/jedit
-/usr/doc/jedit-3.1
-%docdir /usr/doc/jedit-3.1/
-/usr/share/jedit/3.1/
+/usr/doc/jedit-3.0.1
+%docdir /usr/doc/jedit-3.0.1/
+/usr/share/jedit/3.0.1/

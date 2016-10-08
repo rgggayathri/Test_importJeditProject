@@ -30,7 +30,7 @@ import org.gjt.sp.jedit.*;
  * A container for dockable windows. This class should never be used
  * directly.
  * @author Slava Pestov
- * @version $Id: DockableWindowContainer.java,v 1.21 2001/04/18 03:09:45 sp Exp $
+ * @version $Id: DockableWindowContainer.java,v 1.18 2001/01/22 05:35:08 sp Exp $
  * @since jEdit 2.6pre3
  */
 public interface DockableWindowContainer
@@ -46,7 +46,7 @@ public interface DockableWindowContainer
 	 */
 	public class TabbedPane extends JTabbedPane implements DockableWindowContainer
 	{
-		public static final int SPLITTER_WIDTH = 10;
+		public static final int SPLITTER_WIDTH = 5;
 
 		String position;
 		int dimension;
@@ -66,12 +66,6 @@ public interface DockableWindowContainer
 				dimension = -1;
 			}
 
-			if(dimension <= SPLITTER_WIDTH)
-				collapsed = true;
-
-			collapsed = jEdit.getBooleanProperty("view.dock."
-				+ position + ".collapsed");
-
 			MouseHandler mouseHandler = new MouseHandler();
 			addMouseListener(mouseHandler);
 			addMouseMotionListener(mouseHandler);
@@ -90,7 +84,7 @@ public interface DockableWindowContainer
 				return;
 
 			if(dimension <= SPLITTER_WIDTH)
-				dimension = -1;
+				collapsed = true;
 
 			this.collapsed = collapsed;
 			revalidate();
@@ -103,6 +97,9 @@ public interface DockableWindowContainer
 
 		public void saveDimension()
 		{
+			if(dimension <= SPLITTER_WIDTH)
+				dimension = -1;
+
 			jEdit.setProperty("view.dock." + position + ".dimension",
 				String.valueOf(dimension));
 			jEdit.setBooleanProperty("view.dock." + position
@@ -111,7 +108,18 @@ public interface DockableWindowContainer
 
 		public void propertiesChanged()
 		{
-			setBorder(new DockBorder(position));
+			int top = position.equals(DockableWindowManager.BOTTOM)
+				? SPLITTER_WIDTH : 0;
+			int left = position.equals(DockableWindowManager.RIGHT)
+				? SPLITTER_WIDTH : 0;
+			int bottom = position.equals(DockableWindowManager.TOP)
+				? SPLITTER_WIDTH : 0;
+			int right = position.equals(DockableWindowManager.LEFT)
+				? SPLITTER_WIDTH : 0;
+
+			setBorder(new MatteBorder(top,left,bottom,right,
+				GUIUtilities.parseColor(jEdit.getProperty(
+				"view.docking.borderColor"))));
 
 			int tabsPos = Integer.parseInt(jEdit.getProperty(
 				"view.docking.tabsPos"));
@@ -141,7 +149,7 @@ public interface DockableWindowContainer
 					|| position.equals(DockableWindowManager.BOTTOM))
 					prefSize.height = SPLITTER_WIDTH;
 			}
-			else if(dimension <= SPLITTER_WIDTH)
+			else if(dimension == -1)
 			{
 				if(position.equals(DockableWindowManager.LEFT)
 					|| position.equals(DockableWindowManager.RIGHT))
@@ -168,6 +176,8 @@ public interface DockableWindowContainer
 			addTab(jEdit.getProperty(win.getName()
 				+ ".title"),win.getComponent());
 			setSelectedComponent(win.getComponent());
+			if(dimension == 0)
+				dimension = -1;
 
 			collapsed = false;
 
@@ -201,12 +211,10 @@ public interface DockableWindowContainer
 		class MouseHandler extends MouseAdapter implements MouseMotionListener
 		{
 			boolean canDrag;
-			int dragStartDimension;
 			Point dragStart;
 
 			public void mousePressed(MouseEvent evt)
 			{
-				dragStartDimension = dimension;
 				dragStart = evt.getPoint();
 				dragStart.x = (getWidth() - dragStart.x);
 				dragStart.y = (getHeight() - dragStart.y);
@@ -273,20 +281,14 @@ public interface DockableWindowContainer
 				else if(position.equals(DockableWindowManager.LEFT))
 					dimension = evt.getX() + dragStart.x;
 				else if(position.equals(DockableWindowManager.BOTTOM))
-				{
-					dimension = getHeight() - (/* dragStart.y
-						- */ evt.getY());
-				}
+					dimension = getHeight() - evt.getY();
 				else if(position.equals(DockableWindowManager.RIGHT))
-				{
-					dimension = getWidth() - (/* dragStart.x
-						- */ evt.getX());
-				}
+					dimension = getWidth() - evt.getX();
 
 				dimension = Math.max(SPLITTER_WIDTH,dimension);
 				if(dimension == SPLITTER_WIDTH)
 				{
-					dimension = dragStartDimension;
+					dimension = -1;
 					collapsed = true;
 				}
 				else
@@ -299,122 +301,6 @@ public interface DockableWindowContainer
 			{
 				setCursor(Cursor.getPredefinedCursor(
 					Cursor.DEFAULT_CURSOR));
-			}
-		}
-
-		static class DockBorder implements Border
-		{
-			String position;
-			Insets insets;
-			Color color1;
-			Color color2;
-			Color color3;
-
-			DockBorder(String position)
-			{
-				if(UIManager.getLookAndFeel() instanceof MetalLookAndFeel)
-				{
-					color1 = MetalLookAndFeel.getControlHighlight();
-					color2 = MetalLookAndFeel.getControlDarkShadow();
-					color3 = MetalLookAndFeel.getControl();
-				}
-				else
-				{
-					color1 = color2 = null;
-					color3 = GUIUtilities.parseColor(
-						jEdit.getProperty(
-						"view.docking.borderColor"));
-				}
-
-				this.position = position;
-				insets = new Insets(
-					position.equals(DockableWindowManager.BOTTOM)
-						? SPLITTER_WIDTH : 0,
-					position.equals(DockableWindowManager.RIGHT)
-						? SPLITTER_WIDTH : 0,
-					position.equals(DockableWindowManager.TOP)
-						? SPLITTER_WIDTH : 0,
-					position.equals(DockableWindowManager.LEFT)
-						? SPLITTER_WIDTH : 0);
-			}
-
-			public void paintBorder(Component c, Graphics g,
-				int x, int y, int width, int height)
-			{
-				if(position.equals(DockableWindowManager.BOTTOM))
-					paintHorizBorder(g,x,y,width);
-				else if(position.equals(DockableWindowManager.RIGHT))
-					paintVertBorder(g,x,y,height);
-				else if(position.equals(DockableWindowManager.TOP))
-				{
-					paintHorizBorder(g,x,y + height
-						- SPLITTER_WIDTH,width);
-				}
-				else if(position.equals(DockableWindowManager.LEFT))
-				{
-					paintVertBorder(g,x + width
-						- SPLITTER_WIDTH,y,height);
-				}
-			}
-
-			public Insets getBorderInsets(Component c)
-			{
-				return insets;
-			}
-
-			public boolean isBorderOpaque()
-			{
-				return false;
-			}
-
-			private void paintHorizBorder(Graphics g, int x, int y, int width)
-			{
-				g.setColor(color3);
-				g.fillRect(x,y,width,SPLITTER_WIDTH);
-
-				if(color1 == null || color2 == null)
-					return;
-
-				for(int i = 0; i < width / 4 - 1; i++)
-				{
-					g.setColor(color1);
-					g.drawLine(x + i * 4 + 2,y + 3,
-						x + i * 4 + 2,y + 3);
-					g.setColor(color2);
-					g.drawLine(x + i * 4 + 3,y + 4,
-						x + i * 4 + 3,y + 4);
-					g.setColor(color1);
-					g.drawLine(x + i * 4 + 4,y + 5,
-						x + i * 4 + 4,y + 5);
-					g.setColor(color2);
-					g.drawLine(x + i * 4 + 5,y + 6,
-						x + i * 4 + 5,y + 6);
-				}
-			}
-
-			private void paintVertBorder(Graphics g, int x, int y, int height)
-			{
-				g.setColor(color3);
-				g.fillRect(x,y,SPLITTER_WIDTH,height);
-
-				if(color1 == null || color2 == null)
-					return;
-
-				for(int i = 0; i < height / 4 - 1; i++)
-				{
-					g.setColor(color1);
-					g.drawLine(x + 3,y + i * 4 + 2,
-						x + 3,y + i * 4 + 2);
-					g.setColor(color2);
-					g.drawLine(x + 4,y + i * 4 + 3,
-						x + 4,y + i * 4 + 3);
-					g.setColor(color1);
-					g.drawLine(x + 5,y + i * 4 + 4,
-						x + 5,y + i * 4 + 4);
-					g.setColor(color2);
-					g.drawLine(x + 6,y + i * 4 + 5,
-						x + 6,y + i * 4 + 5);
-				}
 			}
 		}
 	}

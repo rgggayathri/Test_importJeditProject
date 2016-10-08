@@ -4,9 +4,10 @@
 
 <!DOCTYPE MODE SYSTEM "xmode.dtd">
 
-<MODE>
+<MODE NAME="vhdl">
 	<PROPS>
 		<PROPERTY NAME="label" VALUE="VHDL" />
+		<PROPERTY NAME="filenameGlob" VALUE="*.vh*" />
 		<PROPERTY NAME="blockComment" VALUE="--" />
 		<PROPERTY NAME="noWordSep" VALUE="_" />
 	</PROPS>

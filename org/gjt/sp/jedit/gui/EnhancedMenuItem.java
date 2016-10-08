@@ -1,6 +1,6 @@
 /*
  * EnhancedMenuItem.java - Menu item with user-specified accelerator string
- * Copyright (C) 1999, 2000, 2001 Slava Pestov
+ * Copyright (C) 1999, 2000 Slava Pestov
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -37,7 +37,7 @@ public class EnhancedMenuItem extends JMenuItem
 	 * @param action The edit action
 	 * @param actionCommand The action command
 	 */
-	public EnhancedMenuItem(String label, EditAction action)
+	public EnhancedMenuItem(String label, EditAction action, String actionCommand)
 	{
 		super(label);
 
@@ -47,23 +47,36 @@ public class EnhancedMenuItem extends JMenuItem
 		{
 			setEnabled(true);
 			addActionListener(new EditAction.Wrapper(action));
-			shortcutProp1 = action.getName() + ".shortcut";
-			shortcutProp2 = action.getName() + ".shortcut2";
+			if(actionCommand == null)
+				keyBindingProp = action.getName() + ".shortcut";
+			else if(action.getName().equals("play-macro"))
+			{
+				// for backwards compatibility with jEdit 2.5
+				// and earlier
+				keyBindingProp = actionCommand + ".shortcut";
+			}
+			else
+			{
+				keyBindingProp = action.getName() + "@"
+					+ actionCommand + ".shortcut";
+			}
 		}
 		else
 			setEnabled(false);
+
+		setActionCommand(actionCommand);
 	}
 
 	public Dimension getPreferredSize()
 	{
 		Dimension d = super.getPreferredSize();
 
-		String shortcut = getShortcut();
+		String keyBinding = getKeyBinding();
 
-		if(shortcut != null)
+		if(keyBinding != null)
 		{
 			d.width += (getToolkit().getFontMetrics(acceleratorFont)
-				.stringWidth(shortcut) + 10);
+				.stringWidth(keyBinding) + 30);
 		}
 		return d;
 	}
@@ -72,9 +85,9 @@ public class EnhancedMenuItem extends JMenuItem
 	{
 		super.paint(g);
 
-		String shortcut = getShortcut();
+		String keyBinding = getKeyBinding();
 
-		if(shortcut != null)
+		if(keyBinding != null)
 		{
 			g.setFont(acceleratorFont);
 			g.setColor(getModel().isArmed() ?
@@ -82,45 +95,34 @@ public class EnhancedMenuItem extends JMenuItem
 				acceleratorForeground);
 			FontMetrics fm = g.getFontMetrics();
 			Insets insets = getInsets();
-			g.drawString(shortcut,getWidth() - (fm.stringWidth(
-				shortcut) + insets.right + insets.left),
+			g.drawString(keyBinding,getWidth() - (fm.stringWidth(
+				keyBinding) + insets.right + insets.left),
 				getFont().getSize() + (insets.top - 1)
 				/* XXX magic number */);
 		}
 	}
 
+	/**
+	 * We override this so that null action commands are supported.
+	 */
+	public String getActionCommand()
+	{
+		return getModel().getActionCommand();
+	}
+
 	// private members
-	private String shortcutProp1;
-	private String shortcutProp2;
+	private String keyBindingProp;
 	private EditAction action;
 	private static Font acceleratorFont;
 	private static Color acceleratorForeground;
 	private static Color acceleratorSelectionForeground;
 
-	private String getShortcut()
+	private String getKeyBinding()
 	{
 		if(action == null)
 			return null;
 		else
-		{
-			String shortcut1 = jEdit.getProperty(shortcutProp1);
-			String shortcut2 = jEdit.getProperty(shortcutProp2);
-
-			if(shortcut1 == null || shortcut1.length() == 0)
-			{
-				if(shortcut2 == null || shortcut2.length() == 0)
-					return null;
-				else
-					return shortcut2;
-			}
-			else
-			{
-				if(shortcut2 == null || shortcut2.length() == 0)
-					return shortcut1;
-				else
-					return shortcut1 + " or " + shortcut2;
-			}
-		}
+			return jEdit.getProperty(keyBindingProp);
 	}
 
 	static

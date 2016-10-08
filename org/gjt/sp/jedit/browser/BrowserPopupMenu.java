@@ -30,7 +30,7 @@ import org.gjt.sp.jedit.io.*;
 import org.gjt.sp.jedit.*;
 
 /**
- * @version $Id: BrowserPopupMenu.java,v 1.13 2001/04/18 03:09:45 sp Exp $
+ * @version $Id: BrowserPopupMenu.java,v 1.9 2000/12/03 08:16:18 sp Exp $
  * @author Slava Pestov and Jason Ginchereau
  */
 public class BrowserPopupMenu extends JPopupMenu
@@ -42,7 +42,7 @@ public class BrowserPopupMenu extends JPopupMenu
 		if(file != null)
 		{
 			this.file = file;
-			this.vfs = VFSManager.getVFSForPath(file.path);
+			this.vfs = VFSManager.getVFSForPath(browser.getDirectory());
 
 			boolean delete = (vfs.getCapabilities() & VFS.DELETE_CAP) != 0;
 			boolean rename = (vfs.getCapabilities() & VFS.RENAME_CAP) != 0;
@@ -51,7 +51,6 @@ public class BrowserPopupMenu extends JPopupMenu
 			{
 				add(createMenuItem("open"));
 				add(createMenuItem("open-view"));
-				add(createMenuItem("insert"));
 				add(createMenuItem("close"));
 			}
 			else
@@ -59,7 +58,7 @@ public class BrowserPopupMenu extends JPopupMenu
 				if(file.type == VFS.DirectoryEntry.DIRECTORY
 					|| file.type == VFS.DirectoryEntry.FILESYSTEM)
 				{
-					add(createMenuItem("browse"));
+					add(createMenuItem("goto"));
 				}
 				else if(browser.getMode() != VFSBrowser.BROWSER)
 				{
@@ -70,7 +69,6 @@ public class BrowserPopupMenu extends JPopupMenu
 				{
 					add(createMenuItem("open"));
 					add(createMenuItem("open-view"));
-					add(createMenuItem("insert"));
 				}
 	
 				if(rename)
@@ -90,7 +88,6 @@ public class BrowserPopupMenu extends JPopupMenu
 		add(showHiddenFiles);
 
 		addSeparator();
-		add(createMenuItem("new-file"));
 		add(createMenuItem("new-directory"));
 
 		addSeparator();
@@ -98,9 +95,8 @@ public class BrowserPopupMenu extends JPopupMenu
 		add(createMenuItem("add-to-favorites"));
 		add(createMenuItem("go-to-favorites"));
 
-		// put them in a vector for sorting
-		Vector vec = new Vector();
 		Enumeration enum = VFSManager.getFilesystems();
+		boolean addedSeparator = false;
 
 		while(enum.hasMoreElements())
 		{
@@ -108,20 +104,17 @@ public class BrowserPopupMenu extends JPopupMenu
 			if((vfs.getCapabilities() & VFS.BROWSE_CAP) == 0)
 				continue;
 
+			if(!addedSeparator)
+			{
+				addSeparator();
+				addedSeparator = true;
+			}
+
 			JMenuItem menuItem = new JMenuItem(jEdit.getProperty(
 				"vfs." + vfs.getName() + ".label"));
 			menuItem.setActionCommand("vfs." + vfs.getName());
 			menuItem.addActionListener(new ActionHandler());
-			vec.addElement(menuItem);
-		}
-
-		if(vec.size() != 0)
-		{
-			addSeparator();
-
-			MiscUtilities.quicksort(vec,new MiscUtilities.MenuItemCompare());
-			for(int i = 0; i < vec.size(); i++)
-				add((JMenuItem)vec.elementAt(i));
+			add(menuItem);
 		}
 	}
 
@@ -154,8 +147,6 @@ public class BrowserPopupMenu extends JPopupMenu
 				if(buffer != null)
 					jEdit.newView(view,buffer);
 			}
-			else if(actionCommand.equals("insert"))
-				view.getBuffer().insert(view,file.path);
 			else if(actionCommand.equals("choose"))
 				browser.filesActivated();
 			else if(actionCommand.equals("close"))
@@ -164,7 +155,7 @@ public class BrowserPopupMenu extends JPopupMenu
 				if(buffer != null)
 					jEdit.closeBuffer(view,buffer);
 			}
-			else if(actionCommand.equals("browse"))
+			else if(actionCommand.equals("goto"))
 				browser.setDirectory(file.path);
 			else if(evt.getActionCommand().equals("rename"))
 				browser.rename(file.path);
@@ -174,23 +165,6 @@ public class BrowserPopupMenu extends JPopupMenu
 			{
 				browser.setShowHiddenFiles(!browser.getShowHiddenFiles());
 				browser.reloadDirectory();
-			}
-			else if(actionCommand.equals("new-file"))
-			{
-				VFS.DirectoryEntry[] selected = browser.getSelectedFiles();
-				if(selected.length >= 1)
-				{
-					VFS.DirectoryEntry file = selected[0];
-					if(file.type == VFS.DirectoryEntry.DIRECTORY)
-						jEdit.newFile(view,file.path);
-					else
-					{
-						VFS vfs = VFSManager.getVFSForPath(file.path);
-						jEdit.newFile(view,vfs.getParentOfPath(file.path));
-					}
-				}
-				else
-					jEdit.newFile(view,browser.getDirectory());
 			}
 			else if(actionCommand.equals("new-directory"))
 				browser.mkdir();

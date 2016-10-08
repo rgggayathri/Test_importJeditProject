@@ -34,20 +34,17 @@ public class MarkerHighlight implements TextAreaHighlight
 
 	public void paintHighlight(Graphics gfx, int line, int y)
 	{
-		if(highlightEnabled)
-		{
-			Color color = getHighlightColor(line);
-			if(color != null)
-			{
-				int firstLine = textArea.getFirstLine();
-				line -= firstLine;
+		Color color = getHighlightColor(line);
+		if(color == null)
+			return;
 
-				FontMetrics fm = textArea.getPainter().getFontMetrics();
-				gfx.setColor(color);
-				gfx.fillRect(0,line * fm.getHeight(),textArea.getGutter()
-					.getWidth(),fm.getHeight());
-			}
-		}
+		int firstLine = textArea.getFirstLine();
+		line -= firstLine;
+
+		FontMetrics fm = textArea.getPainter().getFontMetrics();
+		gfx.setColor(color);
+		gfx.fillRect(0,line * fm.getHeight(),textArea.getGutter()
+			.getWidth(),fm.getHeight());
 
 		if(next != null)
 			next.paintHighlight(gfx,line,y);
@@ -55,16 +52,12 @@ public class MarkerHighlight implements TextAreaHighlight
 
 	public String getToolTipText(MouseEvent evt)
 	{
-		if(highlightEnabled)
-		{
-			FontMetrics fm = textArea.getPainter().getFontMetrics();
-			int line = textArea.getFirstLine() + evt.getY() / fm.getHeight();
-			String tooltip = getLineToolTip(line);
-			if(tooltip != null)
-				return tooltip;
-		}
-
-		if(next != null)
+		FontMetrics fm = textArea.getPainter().getFontMetrics();
+		int line = textArea.getFirstLine() + evt.getY() / fm.getHeight();
+		String tooltip = getLineToolTip(line);
+		if(tooltip != null)
+			return tooltip;
+		else if(next != null)
 			return next.getToolTipText(evt);
 		else
 			return null;
@@ -90,20 +83,9 @@ public class MarkerHighlight implements TextAreaHighlight
 		this.registerHighlightColor = registerHighlightColor;
 	}
 
-	public boolean isHighlightEnabled()
-	{
-		return highlightEnabled;
-	}
-
-	public void setHighlightEnabled(boolean highlightEnabled)
-	{
-		this.highlightEnabled = highlightEnabled;
-	}
-
 	// private members
 	private JEditTextArea textArea;
 	private TextAreaHighlight next;
-	private boolean highlightEnabled;
 
 	private Color markerHighlightColor, registerHighlightColor;
 
@@ -111,8 +93,6 @@ public class MarkerHighlight implements TextAreaHighlight
 	{
 		Buffer buffer = textArea.getBuffer();
 		Vector registers = Registers.getCaretRegisters();
-
-		line = buffer.virtualToPhysical(line);
 
 		for(int i = 0; i < registers.size(); i++)
 		{
@@ -141,8 +121,6 @@ public class MarkerHighlight implements TextAreaHighlight
 	{
 		Buffer buffer = textArea.getBuffer();
 		Registers.Register[] registers = Registers.getRegisters();
-
-		line = buffer.virtualToPhysical(line);
 
 		for(int i = 0; i < registers.length; i++)
 		{
@@ -188,12 +166,6 @@ public class MarkerHighlight implements TextAreaHighlight
 /*
  * ChangeLog:
  * $Log: MarkerHighlight.java,v $
- * Revision 1.7  2001/01/26 03:46:56  sp
- * Folding is now in a minimally useful state
- *
- * Revision 1.6  2001/01/23 09:23:48  sp
- * code cleanups, misc tweaks
- *
  * Revision 1.5  2000/07/22 03:27:03  sp
  * threaded I/O improved, autosave rewrite started
  *

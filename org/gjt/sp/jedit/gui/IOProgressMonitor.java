@@ -147,8 +147,10 @@ public class IOProgressMonitor extends JFrame
 			{
 				if(evt.getSource() == abort)
 				{
-					int result = GUIUtilities.confirm(
-						IOProgressMonitor.this,"abort",null,
+					int result = JOptionPane.showConfirmDialog(
+						IOProgressMonitor.this,
+						jEdit.getProperty("abort.message"),
+						jEdit.getProperty("abort.title"),
 						JOptionPane.YES_NO_OPTION,
 						JOptionPane.QUESTION_MESSAGE);
 					if(result == JOptionPane.YES_OPTION)

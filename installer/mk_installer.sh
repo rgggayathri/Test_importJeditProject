@@ -14,6 +14,7 @@ DESTDIR=$HOME
 jar cfm $DESTDIR/jedit${1}install.jar installer/install.mf \
 	installer/install.props \
 	installer/readme.html \
+	installer/logo.gif \
 	installer/*.class \
 	`cat installer/jedit-*` \
 	installer/jedit-*

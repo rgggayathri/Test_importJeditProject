@@ -98,10 +98,6 @@ public class InstallThread extends Thread
 
 			InputStream in = new BufferedInputStream(
 				getClass().getResourceAsStream("/" + fileName));
-
-			if(in == null)
-				throw new FileNotFoundException(fileName);
-
 			copy(in,outfile);
 			in.close();
 		}

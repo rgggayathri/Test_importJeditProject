@@ -27,11 +27,15 @@ import java.awt.*;
  * An abstract class that steps the user through a set of pages. Used by
  * SwingInstall.
  */
-public abstract class Wizard extends JPanel
+public abstract class Wizard extends JComponent
 {
-	public Wizard(String cancelButtonLabel, String prevButtonLabel,
-		String nextButtonLabel, String finishButtonLabel)
+	public Wizard(Color highlight, Icon logo, String cancelButtonLabel,
+		String prevButtonLabel, String nextButtonLabel,
+		String finishButtonLabel, Component[] pages)
 	{
+		this.highlight = highlight;
+		this.logo = logo;
+
 		ActionHandler actionHandler = new ActionHandler();
 
 		cancelButton = new JButton(cancelButtonLabel);
@@ -46,21 +50,38 @@ public abstract class Wizard extends JPanel
 		this.nextButtonLabel = nextButtonLabel;
 		this.finishButtonLabel = finishButtonLabel;
 
-		setLayout(new WizardLayout());
-		add(cancelButton);
-		add(prevButton);
-		add(nextButton);
-	}
-
-	public void setPages(Component[] pages)
-	{
 		this.pages = pages;
 		for(int i = 0; i < pages.length; i++)
 		{
 			add(pages[i]);
 		}
 
+		setLayout(new WizardLayout());
+		add(cancelButton);
+		add(prevButton);
+		add(nextButton);
+
 		pageChanged();
+	}
+
+	public void paintComponent(Graphics g)
+	{
+		int topBorder = logo.getIconHeight() + PADDING * 2;
+		int sideBorder = PADDING * 2;
+		int bottomBorder = cancelButton.getPreferredSize().height + PADDING * 2;
+
+		g.setColor(highlight);
+		g.fillRect(0,0,getWidth(),getHeight());
+
+		logo.paintIcon(this,g,sideBorder + (getWidth() - PADDING * 4
+			- logo.getIconWidth()) / 2,PADDING);
+
+		int width = getWidth() - sideBorder * 2;
+		int height = getHeight() - topBorder - bottomBorder;
+
+		g.setColor(getBackground());
+		g.fillRoundRect(sideBorder,topBorder,width,height,
+			PADDING * 2,PADDING * 2);
 	}
 
 	// protected members
@@ -68,6 +89,8 @@ public abstract class Wizard extends JPanel
 	protected abstract void finishCallback();
 
 	// private members
+	private Color highlight;
+	private Icon logo;
 	private JButton cancelButton;
 	private JButton prevButton;
 	private JButton nextButton;
@@ -134,14 +157,33 @@ public abstract class Wizard extends JPanel
 				dim.height = Math.max(_dim.height,dim.height);
 			}
 
-			dim.width += PADDING * 2;
-			dim.height += PADDING * 2;
+			dim.width = Math.max(logo.getIconWidth()
+				- PADDING * 2,dim.width);
+
+			dim.width += PADDING * 6;
+			dim.height += (logo.getIconHeight() + cancelButton
+				.getPreferredSize().height + PADDING * 6);
 			return dim;
 		}
 
 		public Dimension minimumLayoutSize(Container parent)
 		{
-			return preferredLayoutSize(parent);
+			Dimension dim = new Dimension();
+
+			for(int i = 0; i < pages.length; i++)
+			{
+				Dimension _dim = pages[i].getMinimumSize();
+				dim.width = Math.max(_dim.width,dim.width);
+				dim.height = Math.max(_dim.height,dim.height);
+			}
+
+			dim.width = Math.max(logo.getIconWidth()
+				- PADDING * 2,dim.width);
+
+			dim.width += PADDING * 6;
+			dim.height += (logo.getIconHeight() + cancelButton
+				.getPreferredSize().height + PADDING * 6);
+			return dim;
 		}
 
 		public void layoutContainer(Container parent)
@@ -153,28 +195,30 @@ public abstract class Wizard extends JPanel
 			buttonSize.width = Math.max(buttonSize.width,prevButton.getPreferredSize().width);
 			buttonSize.width = Math.max(buttonSize.width,nextButton.getPreferredSize().width);
 
-			int bottomBorder = buttonSize.height + PADDING;
+			int topBorder = logo.getIconHeight() + PADDING * 2;
+			int sideBorder = PADDING * 2;
+			int bottomBorder = buttonSize.height + PADDING * 2;
 
 			// cancel button goes on far left
-			cancelButton.setBounds(PADDING,size.height - buttonSize.height
+			cancelButton.setBounds(sideBorder,size.height - buttonSize.height
 				- PADDING,buttonSize.width,buttonSize.height);
 
 			// prev and next buttons are on the right
-			prevButton.setBounds(size.width - buttonSize.width * 2 - 6 - PADDING,
+			prevButton.setBounds(size.width - buttonSize.width * 2 - 6 - sideBorder,
 				size.height - buttonSize.height - PADDING,
 				buttonSize.width,buttonSize.height);
 
-			nextButton.setBounds(size.width - buttonSize.width - PADDING,
+			nextButton.setBounds(size.width - buttonSize.width - sideBorder,
 				size.height - buttonSize.height - PADDING,
 				buttonSize.width,buttonSize.height);
 
 			// calculate size for current page
 			Rectangle currentPageBounds = new Rectangle();
-			currentPageBounds.x = PADDING;
-			currentPageBounds.y = PADDING;
-			currentPageBounds.width = size.width - PADDING * 2;
-			currentPageBounds.height = size.height - PADDING
-				- bottomBorder - PADDING;
+			currentPageBounds.x = PADDING * 3;
+			currentPageBounds.y = topBorder + PADDING;
+			currentPageBounds.width = size.width - PADDING * 6;
+			currentPageBounds.height = size.height - topBorder
+				- bottomBorder - PADDING * 2;
 
 			for(int i = 0; i < pages.length; i++)
 			{

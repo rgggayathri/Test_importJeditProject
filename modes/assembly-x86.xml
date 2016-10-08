@@ -11,10 +11,11 @@
 	- Full NASM 0.98 & MASM 6.15 keyword support, partial TASM support
 -->
 
-<MODE>
+<MODE NAME="assembly-x86">
 
 	<PROPS>
 		<PROPERTY NAME="blockComment" VALUE=";" />
+		<PROPERTY NAME="filenameGlob" VALUE="*.asm" />
 		<PROPERTY NAME="noWordSep" VALUE="_" />
 	</PROPS>
 

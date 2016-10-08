@@ -1,6 +1,6 @@
 /*
  * SearchDialog.java - Search and replace dialog
- * Copyright (C) 1998, 1999, 2000, 2001 Slava Pestov
+ * Copyright (C) 1998, 1999, 2000 Slava Pestov
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -26,7 +26,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
-import org.gjt.sp.jedit.gui.*;
+import org.gjt.sp.jedit.gui.EnhancedDialog;
+import org.gjt.sp.jedit.gui.HistoryTextField;
 import org.gjt.sp.jedit.io.FileVFS;
 import org.gjt.sp.jedit.*;
 import org.gjt.sp.util.Log;
@@ -34,7 +35,7 @@ import org.gjt.sp.util.Log;
 /**
  * Search and replace dialog.
  * @author Slava Pestov
- * @version $Id: SearchDialog.java,v 1.8 2001/04/18 03:09:45 sp Exp $
+ * @version $Id: SearchDialog.java,v 1.6 2000/12/08 04:03:43 sp Exp $
  */
 public class SearchDialog extends EnhancedDialog
 {
@@ -67,8 +68,6 @@ public class SearchDialog extends EnhancedDialog
 	public void setSearchString(String searchString)
 	{
 		find.setText(searchString);
-		find.selectAll();
-
 		replace.setText(null);
 
 		if(!isVisible())
@@ -175,7 +174,7 @@ public class SearchDialog extends EnhancedDialog
 	private HistoryTextField find, replace;
 
 	// search settings
-	private JCheckBox keepDialog, ignoreCase, regexp, reverse, hyperSearch;
+	private JCheckBox keepDialog, ignoreCase, regexp, hyperSearch;
 	private JRadioButton searchCurrentBuffer, searchAllBuffers,
 		searchDirectory;
 
@@ -224,8 +223,7 @@ public class SearchDialog extends EnhancedDialog
 
 	private JPanel createSearchSettingsPanel()
 	{
-		JPanel searchSettings = new JPanel(new VariableGridLayout(
-			VariableGridLayout.FIXED_NUM_COLUMNS,3));
+		JPanel searchSettings = new JPanel(new GridLayout(4,2));
 		searchSettings.setBorder(new EmptyBorder(0,0,12,12));
 
 		SettingsActionHandler actionHandler = new SettingsActionHandler();
@@ -237,12 +235,6 @@ public class SearchDialog extends EnhancedDialog
 		keepDialog.setMnemonic(jEdit.getProperty("search.keep.mnemonic")
 			.charAt(0));
 		searchSettings.add(keepDialog);
-
-		hyperSearch = new JCheckBox(jEdit.getProperty("search.hypersearch"));
-		hyperSearch.setMnemonic(jEdit.getProperty("search.hypersearch.mnemonic")
-			.charAt(0));
-		searchSettings.add(hyperSearch);
-		hyperSearch.addActionListener(actionHandler);
 
 		searchCurrentBuffer = new JRadioButton(jEdit.getProperty("search.current"));
 		searchCurrentBuffer.setMnemonic(jEdit.getProperty("search.current.mnemonic")
@@ -257,8 +249,6 @@ public class SearchDialog extends EnhancedDialog
 		searchSettings.add(ignoreCase);
 		ignoreCase.addActionListener(actionHandler);
 
-		searchSettings.add(Box.createGlue());
-
 		searchAllBuffers = new JRadioButton(jEdit.getProperty("search.all"));
 		searchAllBuffers.setMnemonic(jEdit.getProperty("search.all.mnemonic")
 			.charAt(0));
@@ -272,8 +262,6 @@ public class SearchDialog extends EnhancedDialog
 		searchSettings.add(regexp);
 		regexp.addActionListener(actionHandler);
 
-		searchSettings.add(Box.createGlue());
-
 		searchDirectory = new JRadioButton(jEdit.getProperty("search.directory"));
 		searchDirectory.setMnemonic(jEdit.getProperty("search.directory.mnemonic")
 			.charAt(0));
@@ -281,13 +269,11 @@ public class SearchDialog extends EnhancedDialog
 		searchSettings.add(searchDirectory);
 		searchDirectory.addActionListener(actionHandler);
 
-		reverse = new JCheckBox(jEdit.getProperty("search.reverse"));
-		reverse.setMnemonic(jEdit.getProperty("search.reverse.mnemonic")
+		hyperSearch = new JCheckBox(jEdit.getProperty("search.hypersearch"));
+		hyperSearch.setMnemonic(jEdit.getProperty("search.hypersearch.mnemonic")
 			.charAt(0));
-		searchSettings.add(reverse);
-		reverse.addActionListener(actionHandler);
-
-		searchSettings.add(Box.createGlue());
+		searchSettings.add(hyperSearch);
+		hyperSearch.addActionListener(actionHandler);
 
 		return searchSettings;
 	}
@@ -422,11 +408,6 @@ public class SearchDialog extends EnhancedDialog
 		replaceBtn.setEnabled(replaceEnabled);
 		replaceAndFindBtn.setEnabled(replaceEnabled);
 		replaceAllBtn.setEnabled(replaceEnabled);
-		reverse.setEnabled(replaceEnabled && searchCurrentBuffer.isSelected());
-
-		boolean regexpEnabled = (hyperSearch.isSelected()
-			|| !(reverse.isEnabled() && reverse.isSelected()));
-		regexp.setEnabled(regexpEnabled);
 
 		filter.setEnabled(searchAllBuffers.isSelected()
 			|| searchDirectory.isSelected());
@@ -441,7 +422,6 @@ public class SearchDialog extends EnhancedDialog
 	private boolean save()
 	{
 		String filter = this.filter.getText();
-		this.filter.addCurrentToHistory();
 		if(filter.length() == 0)
 			filter = "*";
 
@@ -452,7 +432,6 @@ public class SearchDialog extends EnhancedDialog
 		else if(searchDirectory.isSelected())
 		{
 			String directory = this.directory.getText();
-			this.directory.addCurrentToHistory();
 			boolean recurse = searchSubDirectories.isSelected();
 
 			if(fileset instanceof DirectoryListSet)
@@ -467,22 +446,14 @@ public class SearchDialog extends EnhancedDialog
 				fileset = new DirectoryListSet(directory,filter,recurse);
 		}
 
-		jEdit.setBooleanProperty("search.keepDialog.toggle",
-			keepDialog.isSelected());
-
-		jEdit.setBooleanProperty("search.hypersearch.toggle",
-			hyperSearch.isSelected());
-
-		boolean ok = true;
-
 		if(fileset.getBufferCount() == 0)
 		{
 			// oops
 			GUIUtilities.error(this,"empty-fileset",null);
-			ok = false;
+			return false;
 		}
-		else
-			SearchAndReplace.setSearchFileSet(fileset);
+
+		SearchAndReplace.setSearchFileSet(fileset);
 
 		if(find.getText().length() != 0)
 		{
@@ -491,10 +462,14 @@ public class SearchDialog extends EnhancedDialog
 			replace.addCurrentToHistory();
 			SearchAndReplace.setReplaceString(replace.getText());
 		}
-		else
-			ok = false;
 
-		return ok;
+		jEdit.setBooleanProperty("search.keepDialog.toggle",
+			keepDialog.isSelected());
+
+		jEdit.setBooleanProperty("search.hypersearch.toggle",
+			hyperSearch.isSelected());
+
+		return true;
 	}
 
 	private void closeOrKeepDialog()
@@ -518,10 +493,11 @@ public class SearchDialog extends EnhancedDialog
 				SearchAndReplace.setIgnoreCase(ignoreCase.isSelected());
 			else if(source == regexp)
 				SearchAndReplace.setRegexp(regexp.isSelected());
-			else if(source == reverse)
-				SearchAndReplace.setReverseSearch(reverse.isSelected());
-
-			updateEnabled();
+			else if(source == hyperSearch
+				|| source == searchCurrentBuffer
+				|| source == searchAllBuffers
+				|| source == searchDirectory)
+				updateEnabled();
 		}
 	}
 

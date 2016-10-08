@@ -4,11 +4,12 @@
 
 <!-- Pascal mode by Kristian Ovaska.
      Delphi 3 was used as reference. -->
-<MODE>
+<MODE NAME="pascal">
 	<PROPS>
 		<PROPERTY NAME="commentStart" VALUE="{" />
 		<PROPERTY NAME="commentEnd" VALUE="}" />
 		<PROPERTY NAME="blockComment" VALUE="//" />
+		<PROPERTY NAME="filenameGlob" VALUE="*.pas" />
 		<PROPERTY NAME="noWordSep" VALUE="_" />
 	</PROPS>
 

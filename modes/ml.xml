@@ -2,11 +2,12 @@
 
 <!DOCTYPE MODE SYSTEM "xmode.dtd">
 
-<MODE>
+<MODE NAME="ml">
 	<PROPS>
 		<PROPERTY NAME="commentStart" VALUE="(*" />
 		<PROPERTY NAME="boxComment" VALUE="*" />
 		<PROPERTY NAME="commentEnd" VALUE="*)" />
+		<PROPERTY NAME="filenameGlob" VALUE="*.ml" />
 		<PROPERTY NAME="noWordSep" VALUE="_" />
 	</PROPS>
 	<RULES ESCAPE="\" IGNORE_CASE="FALSE" HIGHLIGHT_DIGITS="TRUE">

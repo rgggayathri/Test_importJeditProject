@@ -12,6 +12,10 @@
 <!-- MODE element -->
 <!ELEMENT MODE ( PROPS, RULES* ) >
 
+<!-- MODE attributes -->
+<!ATTLIST MODE
+	NAME CDATA #REQUIRED >
+
 <!-- MODE children -->
 <!-- PROPS element -->
 <!ELEMENT PROPS ( PROPERTY+ ) >

@@ -2,9 +2,10 @@
 
 <!DOCTYPE MODE SYSTEM "xmode.dtd">
 
-<MODE>
+<MODE NAME="batch">
 	<PROPS>
 		<PROPERTY NAME="blockComment" VALUE="rem " />
+		<PROPERTY NAME="filenameGlob" VALUE="*.bat" />
 	</PROPS>
 	<RULES ESCAPE="\" IGNORE_CASE="TRUE">
 		<WHITESPACE> </WHITESPACE>

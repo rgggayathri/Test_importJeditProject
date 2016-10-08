@@ -1,6 +1,6 @@
 /*
  * ActionListHandler.java - XML handler for action files
- * Copyright (C) 2000, 2001 Slava Pestov
+ * Copyright (C) 2000 Slava Pestov
  * Portions copyright (C) 1999 mike dillon
  *
  * This program is free software; you can redistribute it and/or
@@ -27,11 +27,9 @@ import org.gjt.sp.util.Log;
 
 class ActionListHandler extends HandlerBase
 {
-	ActionListHandler(String path, boolean plugin)
+	ActionListHandler(String path)
 	{
 		this.path = path;
-		this.plugin = plugin;
-		stateStack = new Stack();
 	}
 
 	public Object resolveEntity(String publicId, String systemId)
@@ -70,7 +68,7 @@ class ActionListHandler extends HandlerBase
 	public void doctypeDecl(String name, String publicId,
 		String systemId) throws Exception
 	{
-		if("ACTIONS".equals(name))
+		if("ACTIONS".equalsIgnoreCase(name))
 			return;
 
 		Log.log(Log.ERROR,this,path + ": DOCTYPE must be ACTIONS");
@@ -109,12 +107,13 @@ class ActionListHandler extends HandlerBase
 
 		String tag = peekElement();
 
-		if(name.equals(tag))
+		if(name.equalsIgnoreCase(tag))
 		{
 			if(tag == "ACTION")
 			{
 				jEdit.addAction(new BeanShellAction(actionName,
-					plugin,code,isSelected,noRepeat,noRecord));
+					code,isSelected,noRepeat,
+					noRecord));
 			}
 
 			popElement();
@@ -141,7 +140,6 @@ class ActionListHandler extends HandlerBase
 
 	// private members
 	private String path;
-	private boolean plugin;
 
 	private String actionName;
 	private String code;
@@ -154,6 +152,8 @@ class ActionListHandler extends HandlerBase
 
 	private String pushElement(String name)
 	{
+		if (stateStack == null) stateStack = new Stack();
+
 		name = (name == null) ? null : name.intern();
 
 		stateStack.push(name);
@@ -163,11 +163,15 @@ class ActionListHandler extends HandlerBase
 
 	private String peekElement()
 	{
+		if (stateStack == null) stateStack = new Stack();
+
 		return (String) stateStack.peek();
 	}
 
 	private String popElement()
 	{
+		if (stateStack == null) stateStack = new Stack();
+
 		return (String) stateStack.pop();
 	}
 }

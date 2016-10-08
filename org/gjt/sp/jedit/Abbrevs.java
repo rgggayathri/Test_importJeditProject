@@ -1,6 +1,6 @@
 /*
  * Abbrevs.java - Abbreviation manager
- * Copyright (C) 1999, 2000, 2001 Slava Pestov
+ * Copyright (C) 1999, 2000 Slava Pestov
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -20,18 +20,16 @@
 package org.gjt.sp.jedit;
 
 import javax.swing.text.BadLocationException;
-import javax.swing.text.Element;
 import javax.swing.*;
 import java.io.*;
 import java.util.*;
-import org.gjt.sp.jedit.gui.AddAbbrevDialog;
 import org.gjt.sp.jedit.textarea.*;
 import org.gjt.sp.util.Log;
 
 /**
  * Abbreviation manager.
  * @author Slava Pestov
- * @version $Id: Abbrevs.java,v 1.23 2001/03/14 05:37:27 sp Exp $
+ * @version $Id: Abbrevs.java,v 1.19 2000/11/19 07:51:24 sp Exp $
  */
 public class Abbrevs
 {
@@ -98,15 +96,12 @@ public class Abbrevs
 			(String)buffer.getProperty("noWordSep"));
 
 		String abbrev = lineText.substring(wordStart,pos);
-		Expansion expand = Abbrevs.expandAbbrev(buffer.getMode().getName(),
-			abbrev,(buffer.getBooleanProperty("noTabs") ?
-			buffer.getTabSize() : 0));
+		Expansion expand = Abbrevs.expandAbbrev(buffer.getMode().getName(),abbrev);
 
 		if(expand == null)
 		{
 			if(add)
-				new AddAbbrevDialog(view,abbrev);
-
+				addAbbrev(view,abbrev);
 			return false;
 		}
 		else
@@ -114,11 +109,6 @@ public class Abbrevs
 			buffer.beginCompoundEdit();
 			try
 			{
-				// obtain the leading indent for later use
-				lineText = buffer.getText(lineStart,wordStart);
-				int leadingIndent = MiscUtilities.getLeadingWhiteSpaceWidth(
-					lineText,buffer.getTabSize());
-
 				buffer.remove(lineStart + wordStart,pos - wordStart);
 				buffer.insertString(lineStart + wordStart,expand.text,null);
 				if(expand.caretPosition != -1)
@@ -127,19 +117,11 @@ public class Abbrevs
 						+ expand.caretPosition);
 				}
 
-				String whiteSpace = MiscUtilities.createWhiteSpace(
-					leadingIndent,buffer.getBooleanProperty("noTabs")
-					? 0 : buffer.getTabSize());
-
-				Element map = buffer.getDefaultRootElement();
-
 				// note that if expand.lineCount is 0, we
 				// don't do any indentation at all
 				for(int i = line + 1; i <= line + expand.lineCount; i++)
 				{
-					Element elem = map.getElement(i);
-					buffer.insertString(elem.getStartOffset(),
-						whiteSpace,null);
+					buffer.indentLine(i,true,false);
 				}
 			}
 			catch(BadLocationException bl)
@@ -156,12 +138,9 @@ public class Abbrevs
 	 * Locates a completion for the specified abbrev.
 	 * @param mode The edit mode
 	 * @param abbrev The abbrev
-	 * @param softTabSize The soft tab size, or zero if hard tabs should
-	 * be used in the expansion
-	 * @since jEdit 3.1pre1
+	 * @since jEdit 2.6pre4
 	 */
-	public static Expansion expandAbbrev(String mode, String abbrev,
-		int softTabSize)
+	public static Expansion expandAbbrev(String mode, String abbrev)
 	{
 		// try mode-specific abbrevs first
 		String expand = null;
@@ -175,7 +154,7 @@ public class Abbrevs
 		if(expand == null)
 			return null;
 		else
-			return new Expansion(expand,softTabSize);
+			return new Expansion(expand);
 	}
 
 	/**
@@ -188,7 +167,7 @@ public class Abbrevs
 		public int caretPosition = -1;
 		public int lineCount;
 
-		public Expansion(String text, int softTabSize)
+		public Expansion(String text)
 		{
 			StringBuffer buf = new StringBuffer();
 			boolean backslash = false;
@@ -207,16 +186,6 @@ public class Abbrevs
 						buf.append('\n');
 						lineCount++;
 					}
-					else if(ch == 't')
-					{
-						if(softTabSize == 0)
-							buf.append('\t');
-						else
-						{
-							for(int j = 0; j < softTabSize; j++)
-								buf.append(' ');
-						}
-					}
 					else
 						buf.append(ch);
 				}
@@ -227,6 +196,25 @@ public class Abbrevs
 			}
 
 			this.text = buf.toString();
+		}
+
+		public String toString()
+		{
+			StringBuffer buf = new StringBuffer();
+			for(int i = 0; i < text.length(); i++)
+			{
+				if(i == caretPosition)
+					buf.append("\\|");
+
+				char ch = text.charAt(i);
+				if(ch == '\n')
+					buf.append("\\n");
+				else if(ch == '\\')
+					buf.append("\\\\");
+				else
+					buf.append(ch);
+			}
+			return buf.toString();
 		}
 	}
 
@@ -268,37 +256,6 @@ public class Abbrevs
 	{
 		abbrevsChanged = true;
 		Abbrevs.modes = modes;
-	}
-
-	/**
-	 * Adds an abbreviation to the global abbreviation list.
-	 * @param abbrev The abbreviation
-	 * @param expansion The expansion
-	 * @since jEdit 3.1pre1
-	 */
-	public static void addGlobalAbbrev(String abbrev, String expansion)
-	{
-		globalAbbrevs.put(abbrev,expansion);
-		abbrevsChanged = true;
-	}
-
-	/**
-	 * Adds a mode-specific abbrev.
-	 * @param mode The edit mode
-	 * @param abbrev The abbrev
-	 * @param expansion The expansion
-	 * @since jEdit 3.1pre1
-	 */
-	public static void addModeAbbrev(String mode, String abbrev, String expansion)
-	{
-		Hashtable modeAbbrevs = (Hashtable)modes.get(mode);
-		if(modeAbbrevs == null)
-		{
-			modeAbbrevs = new Hashtable();
-			modes.put(mode,modeAbbrevs);
-		}
-		modeAbbrevs.put(abbrev,expansion);
-		abbrevsChanged = true;
 	}
 
 	// package-private members
@@ -466,4 +423,92 @@ public class Abbrevs
 			out.write(lineSep);
 		}
 	}
+
+	private static void addAbbrev(View view, String abbrev)
+	{
+		String[] args = { abbrev };
+		JTextField textField = new JTextField();
+		Object[] message = {
+			jEdit.getProperty("add-abbrev.message",args),
+			textField };
+		Object[] options = { jEdit.getProperty("add-abbrev.global"),
+			jEdit.getProperty("add-abbrev.mode"),
+			jEdit.getProperty("common.cancel") };
+
+		int retVal = JOptionPane.showOptionDialog(view,message,
+			jEdit.getProperty("add-abbrev.title"),
+			JOptionPane.YES_NO_OPTION,
+			JOptionPane.QUESTION_MESSAGE,
+			null,options,options[0]);
+
+		String expand = textField.getText();
+		if(expand == null || (retVal != 0 && retVal != 1))
+			return;
+
+		if(retVal == 1)
+		{
+			String mode = view.getBuffer().getMode().getName();
+			Hashtable modeAbbrevs = (Hashtable)modes.get(mode);
+			if(modeAbbrevs == null)
+			{
+				modeAbbrevs = new Hashtable();
+				modes.put(mode,modeAbbrevs);
+			}
+			modeAbbrevs.put(abbrev,expand);
+		}
+		else
+			globalAbbrevs.put(abbrev,expand);
+
+		abbrevsChanged = true;
+
+		expandAbbrev(view,false);
+	}
 }
+
+/*
+ * ChangeLog:
+ * $Log: Abbrevs.java,v $
+ * Revision 1.19  2000/11/19 07:51:24  sp
+ * Documentation updates, bug fixes
+ *
+ * Revision 1.18  2000/10/28 00:36:58  sp
+ * ML mode, Haskell mode
+ *
+ * Revision 1.17  2000/10/12 09:28:26  sp
+ * debugging and polish
+ *
+ * Revision 1.16  2000/09/01 11:31:00  sp
+ * Rudimentary 'command line', similar to emacs minibuf
+ *
+ * Revision 1.15  2000/08/29 07:47:10  sp
+ * Improved complete word, type-select in VFS browser, bug fixes
+ *
+ * Revision 1.14  2000/08/23 09:51:48  sp
+ * Documentation updates, abbrev updates, bug fixes
+ *
+ * Revision 1.13  2000/08/22 07:25:00  sp
+ * Improved abbrevs, bug fixes
+ *
+ * Revision 1.12  2000/07/19 08:35:58  sp
+ * plugin devel docs updated, minor other changes
+ *
+ * Revision 1.11  2000/04/27 08:32:56  sp
+ * VFS fixes, read only fixes, macros can prompt user for input, improved
+ * backup directory feature
+ *
+ * Revision 1.10  2000/04/15 04:14:46  sp
+ * XML files updated, jEdit.get/setBooleanProperty() method added
+ *
+ * Revision 1.9  2000/03/21 07:18:53  sp
+ * bug fixes
+ *
+ * Revision 1.8  2000/03/11 03:02:15  sp
+ * 2.3final
+ *
+ * Revision 1.7  2000/03/04 03:39:54  sp
+ * *** empty log message ***
+ *
+ * Revision 1.6  2000/02/15 07:44:30  sp
+ * bug fixes, doc updates, etc
+ *
+ */

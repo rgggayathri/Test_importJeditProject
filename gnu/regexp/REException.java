@@ -1,18 +1,18 @@
 /*
  *  gnu/regexp/REException.java
- *  Copyright (C) 1998-2001 Wes Biggs
+ *  Copyright (C) 1998 Wes Biggs
  *
  *  This library is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU Lesser General Public License as published
- *  by the Free Software Foundation; either version 2.1 of the License, or
+ *  it under the terms of the GNU Library General Public License as published
+ *  by the Free Software Foundation; either version 2 of the License, or
  *  (at your option) any later version.
  *
  *  This library is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Lesser General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
- *  You should have received a copy of the GNU Lesser General Public License
+ *  You should have received a copy of the GNU Library General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
@@ -34,8 +34,8 @@ package gnu.regexp;
  */
 
 public class REException extends Exception {
-  private int type;
-  private int pos;
+  private int m_type;
+  private int m_pos;
 
   // Error conditions from GNU regcomp(3) manual
 
@@ -123,8 +123,8 @@ public class REException extends Exception {
 
   REException(String msg, int type, int position) { 
     super(msg); 
-    this.type = type;
-    this.pos = position;
+    m_type = type;
+    m_pos = position;
   }
 
   /**
@@ -132,7 +132,7 @@ public class REException extends Exception {
    */
 
   public int getType() {
-    return type;
+    return m_type;
   }
 
   /**
@@ -142,7 +142,7 @@ public class REException extends Exception {
    * a bad subexpression.
    */
   public int getPosition() {
-    return pos;
+    return m_pos;
   }
 
   /**
@@ -152,7 +152,7 @@ public class REException extends Exception {
    */
   public String getMessage() {
     StringBuffer sb = new StringBuffer();
-    sb.append("At position " + pos + " in regular expression pattern: ");
+    sb.append("At position "+m_pos+" in regular expression pattern: ");
     sb.append('\n');
     sb.append(super.getMessage());
     return sb.toString();

@@ -26,7 +26,7 @@ import org.gjt.sp.jedit.MiscUtilities;
 /**
  * A regular expression string matcher.
  * @author Slava Pestov
- * @version $Id: RESearchMatcher.java,v 1.6 2001/04/18 03:09:45 sp Exp $
+ * @version $Id: RESearchMatcher.java,v 1.5 2000/12/08 04:03:43 sp Exp $
  */
 public class RESearchMatcher implements SearchMatcher
 {
@@ -34,10 +34,8 @@ public class RESearchMatcher implements SearchMatcher
 	 * Perl5 syntax with character classes enabled.
 	 * @since jEdit 3.0pre5
 	 */
-	public static final RESyntax RE_SYNTAX_JEDIT
-		= new RESyntax(RESyntax.RE_SYNTAX_PERL5)
-		.set(RESyntax.RE_CHAR_CLASSES)
-		.setLineSeparator("\n");
+	public static final RESyntax RE_SYNTAX_JEDIT = new RESyntax(
+		RESyntax.RE_SYNTAX_PERL5).set(RESyntax.RE_CHAR_CLASSES);
 
 	/**
 	 * Creates a new regular expression string matcher.
